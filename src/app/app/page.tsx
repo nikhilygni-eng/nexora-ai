@@ -215,7 +215,7 @@ export default function CommandCenter() {
                   send(input);
                 }
               }}
-              placeholder={aiOff ? "AI isn't configured yet" : "Bill Northwind $2,400 for the Q4 retainer, due in 30 days…"}
+              placeholder={aiOff ? "AI isn't configured yet" : "Bill Northwind $2,400, due in 30 days…"}
               className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] placeholder:text-ink-3 focus:outline-none"
             />
             <Button type="submit" variant="primary" disabled={!input.trim() || sending || !!aiOff} loading={sending} aria-label="Send" className="size-11 shrink-0 !px-0">

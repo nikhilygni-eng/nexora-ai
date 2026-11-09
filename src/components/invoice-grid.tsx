@@ -59,8 +59,8 @@ export function InvoiceGrid({ invoices }: { invoices: InvoiceDTO[] }) {
       { field: "due_date", headerName: "Due", minWidth: 120, valueFormatter: (p) => fmtDate(p.value) },
       { field: "total_minor", headerName: "Total", minWidth: 120, type: "rightAligned", valueFormatter: money, cellClass: "num", filter: "agNumberColumnFilter" },
       { field: "outstanding_minor", headerName: "Outstanding", minWidth: 130, type: "rightAligned", valueFormatter: money, cellClass: "num", filter: "agNumberColumnFilter" },
-      { field: "days_late", headerName: "Days late", minWidth: 110, type: "rightAligned", cellClass: "num", valueFormatter: (p) => (p.value ? String(p.value) : "—") },
-      { field: "currency", headerName: "Cur.", minWidth: 80, maxWidth: 90 },
+      { field: "days_late", headerName: "Late", minWidth: 80, type: "rightAligned", cellClass: "num", valueFormatter: (p) => (p.value ? String(p.value) : "—") },
+      { field: "currency", headerName: "Cur.", minWidth: 72, maxWidth: 84 },
     ],
     [],
   );
@@ -81,6 +81,7 @@ export function InvoiceGrid({ invoices }: { invoices: InvoiceDTO[] }) {
           columnDefs={cols}
           defaultColDef={{ sortable: true, filter: true, resizable: true, flex: 1 }}
           quickFilterText={q}
+          autoSizeStrategy={{ type: "fitGridWidth", defaultMinWidth: 90 }}
           getRowId={(p) => p.data.id}
           onRowClicked={(e) => e.data && router.push(`/app/invoices/${e.data.id}`)}
           rowStyle={{ cursor: "pointer" }}

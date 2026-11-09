@@ -16,7 +16,7 @@ You type: *"Bill Acme Corp $800 for the landing page redesign, due in 14 days."*
 ## How we built it
 
 - **Agent with typed tools** (`draft_invoice`, `find_client`, `list_invoices`, `get_invoice_status`, `summarize_receivables`, `draft_reminder`), every argument and output validated with zod.
-- **Approval gating by construction:** write tools only create `pending_approval` proposals. The one PayPal write path is a separate endpoint behind the user's click, with an atomic compare-and-set so double clicks execute once, plus `PayPal-Request-Id` idempotency on every PayPal write.
+- **Approval gating by construction:** write tools only create `pending_approval` proposals. The one PayPal write path is a separate endpoint behind the user's click, with an atomic compare-and-set so double clicks execute once, plus a deterministic PayPal invoice number per proposal, so a retry after a lost response finds the existing invoice instead of creating a duplicate.
 - **Server-side anti-hallucination:** an email is accepted only if the user typed it or it belongs to a saved client.
 - **Provider-agnostic AI:** FreeLLMAPI (an OpenAI-compatible router over free model tiers) by default, Google Gemini via `@google/genai` as an alternative.
 - **Money done right:** integer minor units in the database, exact decimal strings for PayPal, zero-decimal currencies (JPY, HUF, TWD) handled, configurable tax.

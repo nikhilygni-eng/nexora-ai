@@ -63,7 +63,7 @@ export function AppShell({ children, status }: { children: ReactNode; status: Sh
   );
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[248px_1fr]">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[248px_1fr] lg:bg-[linear-gradient(to_right,var(--ink)_248px,transparent_248px)]">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2">
         Skip to content
       </a>

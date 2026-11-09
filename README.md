@@ -28,7 +28,7 @@ Freelancers and small studios billing international clients lose hours to invoic
 - **Human-in-the-loop by construction.** Write tools only create a proposal with status `pending_approval`. The single PayPal write path is `POST /api/proposals/:id/approve`, triggered by the user's click. The agent can't reach it.
 - **Never guesses an email.** `draft_invoice` rejects any email that the user didn't type and that isn't a saved client. The model is told to ask.
 - **Real PayPal Sandbox integration:** create draft → send → get status → remind → cancel, plus verified webhooks.
-- **Idempotency at two layers:** `PayPal-Request-Id` on every write, and an atomic compare-and-set on the proposal row, so double clicks and concurrent requests execute once. A failed send can be retried without creating a second PayPal invoice.
+- **Idempotency without trusting one mechanism:** (1) an atomic compare-and-set on the proposal row, so double clicks and concurrent requests execute once; (2) a deterministic PayPal invoice number per proposal (`NX-…`), so if PayPal created the invoice but the response was lost, a retry finds it with `search-invoices` instead of creating a duplicate; (3) `PayPal-Request-Id` sent on every write as defense in depth (the Invoicing v2 spec does not document it, so we don't rely on it). A failed send resumes from the stored PayPal invoice.
 - **Status sync** via refresh button, polling while invoices are open, and (optionally) PayPal webhooks with signature verification.
 - **Analytics** with AG Grid Community (sort, filter, quick search), billed-vs-collected and aging charts, a labeled **Estimate** for next-30-day collections, and **grounded AI insights**. Insights must cite fact keys, and any insight quoting an amount not in the data is discarded.
 - **Configurable tax** (name + percent, workspace default or per invoice), 25 PayPal currencies including zero-decimal JPY/HUF/TWD.
@@ -47,7 +47,7 @@ flowchart LR
   AG -->|write tools| P[Proposal<br/>pending_approval]
   P --> CC
   CC -->|Approve click<br/>POST /api/proposals/:id/approve| SVC[Invoice service<br/>atomic CAS + idempotency]
-  SVC -->|OAuth2 + PayPal-Request-Id| PP[(PayPal Invoicing v2<br/>Sandbox)]
+  SVC -->|OAuth2 + unique invoice no.| PP[(PayPal Invoicing v2<br/>Sandbox)]
   PP -->|status / webhooks| SVC
   SVC --> DB
   SVC --> AUD[(Audit log)]
@@ -77,8 +77,9 @@ Endpoints verified against PayPal's official OpenAPI spec ([paypal-rest-api-spec
 | Purpose | Call |
 |---|---|
 | Auth | `POST /v1/oauth2/token` (client credentials; cached until 60 s before expiry; single-flight) |
-| Create draft | `POST /v2/invoicing/invoices` with `Prefer: return=representation`, `PayPal-Request-Id` |
-| Send | `POST /v2/invoicing/invoices/{id}/send` with `PayPal-Request-Id` |
+| Create draft | `POST /v2/invoicing/invoices` with `Prefer: return=representation` and a deterministic `detail.invoice_number` |
+| Recover | `POST /v2/invoicing/search-invoices` by invoice number (after a lost response / `DUPLICATE_INVOICE_NUMBER`) |
+| Send | `POST /v2/invoicing/invoices/{id}/send` |
 | Status | `GET /v2/invoicing/invoices/{id}` (source of truth for status, totals and paid amount) |
 | Reminder | `POST /v2/invoicing/invoices/{id}/remind` (only after approval; status re-checked first) |
 | Cancel | `POST /v2/invoicing/invoices/{id}/cancel` |
@@ -124,6 +125,17 @@ Open http://localhost:3000 and sign in with your `APP_PASSCODE`. `/setup` lists 
 | `DATABASE_PATH` | default `./data/nexora.db` |
 | `PAYPAL_WEBHOOK_ID` | optional; enables `/api/webhooks/paypal` |
 
+### Choosing a Gemini model (free tier)
+
+Measured on a free-tier Google AI Studio key (Nov 2026):
+
+| Model | Free-tier quota | Agent turn latency (thinking `low`) |
+|---|---|---|
+| `gemini-3.5-flash-lite` | 15 requests / minute | ~2–4 s |
+| `gemini-3.5-flash` | 20 requests / **day** | ~20–50 s at default thinking |
+
+One agent turn uses 1–3 model requests. For demos and judging use **`gemini-3.5-flash-lite`** with `AI_THINKING_LEVEL=low`, or a billed key. `gemini-2.5-*` models return 404 for new keys. When a quota is hit, NEXORA says which one and how long to wait.
+
 ### Sandbox test accounts
 
 1. In the PayPal Developer Dashboard, open **Testing Tools → Sandbox Accounts**. You get a default **Business** account (the invoicer, tied to your REST app) and a **Personal** account (a payer).
@@ -147,6 +159,9 @@ Open http://localhost:3000 and sign in with your `APP_PASSCODE`. `/setup` lists 
 npm test               # Vitest: money, schemas, AI parsing, PayPal client (mocked HTTP), idempotency, approval gating
 npm run test:e2e       # Playwright: full flow against a production build (mock PayPal + scripted provider)
 npm run test:sandbox   # opt-in: real PayPal Sandbox create → send → get → remind → cancel
+npm run check:paypal   # read-only: OAuth token + list invoices (creates nothing)
+NEXORA_URL=http://localhost:3000 NEXORA_PASSCODE=... npm run check:live-agent  # real AI, 12 checks
+NEXORA_URL=http://localhost:3000 NEXORA_PASSCODE=... npm run check:ui-live     # real AI in Chromium + screenshots
 npm run lint && npm run build
 ```
 

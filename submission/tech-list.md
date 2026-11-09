@@ -1,7 +1,7 @@
 # Built with
 
 - PayPal Invoicing v2 REST API (Sandbox): create, send, get, remind, cancel
-- PayPal OAuth 2.0 client credentials, PayPal-Request-Id idempotency, webhook signature verification
+- PayPal OAuth 2.0 client credentials, unique invoice numbers + search-based recovery for idempotency, webhook signature verification
 - FreeLLMAPI (OpenAI-compatible router) and Google Gemini (@google/genai) behind a provider-agnostic interface
 - Next.js 15 (App Router), React 19, TypeScript (strict)
 - Tailwind CSS 4
