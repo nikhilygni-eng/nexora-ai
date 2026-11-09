@@ -38,6 +38,12 @@ npm run test:e2e        # 3 Playwright tests (builds must exist: npm run build)
 npm run test:sandbox    # real Sandbox, opt-in, skipped without credentials
 ```
 
+## Owner laptop (escanor, Node 22.22.1, npm 9.2.0) — 2026-11-09
+
+Synced from the private GitHub repo with `git pull --ff-only` (history preserved).
+
+- `npm ci`: OK · `npm run lint`: clean · `npm test`: 33 passed · `npm run build`: success · `npm run test:e2e`: 3 passed (after `npx playwright install chromium`)
+
 ## Last results (2026-11-09, cloud dev container)
 
 - `npm test`: 33 passed
