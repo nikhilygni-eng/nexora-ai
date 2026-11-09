@@ -40,6 +40,8 @@ export function apiError(err: unknown) {
   if (err instanceof PayPalApiError) return body(502, "paypal_error", err.userMessage, { debugId: err.debugId });
   if (err instanceof PayPalNetworkError) return body(504, "paypal_unreachable", err.userMessage);
   if (err instanceof AIProviderError) {
+    // Server-side diagnostics only (provider messages never contain our keys); the client gets a generic message.
+    console.warn(`[ai] ${err.kind}: ${err.message.slice(0, 300)}`);
     const status = err.kind === "not_configured" ? 503 : err.kind === "rate_limited" ? 429 : err.kind === "timeout" ? 504 : 502;
     return body(status, `ai_${err.kind}`, err.userMessage);
   }

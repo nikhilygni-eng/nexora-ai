@@ -1,6 +1,7 @@
 import "server-only";
 import { logAudit } from "@/lib/audit";
 import {
+  getOrg,
   getInvoiceByProposal,
   getInvoiceRow,
   getProposal,
@@ -158,14 +159,29 @@ async function executeCreateAndSend(orgId: string, p: ProposalRow) {
   const { client: paypal, source } = getPayPal();
 
   // Resume after a partial failure: never create a second PayPal invoice for the same proposal.
+  // Layer 1: our own row. Layer 2: PayPal's unique invoice number (covers a create whose response was lost).
+  const invoiceNumber = proposalInvoiceNumber(p.id);
   let row = getInvoiceByProposal(orgId, p.id);
   if (!row) {
-    let created: Awaited<ReturnType<typeof paypal.createDraftInvoice>>;
+    let created: Awaited<ReturnType<typeof paypal.createDraftInvoice>> | null = null;
+    if (p.attempts > 0) {
+      const existing = await paypal.findInvoiceByNumber(invoiceNumber).catch(() => null);
+      if (existing) {
+        created = { invoice: existing };
+        logAudit({ orgId, actor: "paypal", action: "paypal.invoice.recovered", entityType: "proposal", entityId: p.id, paypalInvoiceId: existing.id, details: { invoice_number: invoiceNumber } });
+      }
+    }
     try {
-      created = await paypal.createDraftInvoice(inv, `${p.idempotency_key}-create`);
+      created ??= await paypal.createDraftInvoice(inv, `${p.idempotency_key}-create`, invoiceNumber);
     } catch (err) {
-      auditPayPalError(orgId, "paypal.invoice.create_failed", err, { proposalId: p.id });
-      throw err;
+      const dup = err instanceof PayPalApiError && err.details.some((d) => d.issue === "DUPLICATE_INVOICE_NUMBER");
+      const recovered = dup ? await paypal.findInvoiceByNumber(invoiceNumber).catch(() => null) : null;
+      if (!recovered) {
+        auditPayPalError(orgId, "paypal.invoice.create_failed", err, { proposalId: p.id });
+        throw err;
+      }
+      created = { invoice: recovered };
+      logAudit({ orgId, actor: "paypal", action: "paypal.invoice.recovered", entityType: "proposal", entityId: p.id, paypalInvoiceId: recovered.id, details: { invoice_number: invoiceNumber, via: "duplicate_number" } });
     }
     logAudit({
       orgId,
@@ -196,7 +212,7 @@ async function executeCreateAndSend(orgId: string, p: ProposalRow) {
     try {
       const sent = await paypal.sendInvoice(
         row.paypal_invoice_id!,
-        { subject: `Invoice from your freelancer — due ${inv.due_date}`, note: inv.note },
+        { subject: `Invoice ${invoiceNumber} from ${getOrg(orgId).name}, due ${inv.due_date}`, note: inv.note },
         `${p.idempotency_key}-send`,
       );
       logAudit({
@@ -330,4 +346,9 @@ export async function syncOpenInvoices(orgId: string, minIntervalMs = 15000) {
 
 export function isRemindable(row: InvoiceRow) {
   return row.source !== "demo" && !!row.paypal_invoice_id && REMINDABLE_PAYPAL.has(row.paypal_status ?? "");
+}
+
+/** Deterministic, PayPal-unique invoice number per proposal (max 25 chars per the Invoicing v2 spec). */
+export function proposalInvoiceNumber(proposalId: string): string {
+  return `NX-${proposalId.replace(/^prop_/, "").slice(0, 12).toUpperCase()}`;
 }

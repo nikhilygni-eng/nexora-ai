@@ -139,9 +139,13 @@ export class PayPalClient {
   }
 
   /** POST /v2/invoicing/invoices — creates a DRAFT invoice. */
-  async createDraftInvoice(inv: NormalizedInvoice, requestId: string): Promise<{ invoice: PayPalInvoice; debugId?: string }> {
+  async createDraftInvoice(
+    inv: NormalizedInvoice,
+    requestId: string,
+    invoiceNumber?: string,
+  ): Promise<{ invoice: PayPalInvoice; debugId?: string }> {
     const res = await this.request<PayPalInvoice | PayPalLink>("POST", "/v2/invoicing/invoices", {
-      body: buildInvoiceBody(inv),
+      body: buildInvoiceBody(inv, invoiceNumber),
       requestId,
       prefer: "return=representation",
     });
@@ -152,6 +156,20 @@ export class PayPalClient {
     const id = href?.split("/").pop();
     if (!id) throw new PayPalApiError(res.status, "UNEXPECTED_RESPONSE", "Create returned no invoice id", res.debugId, [], "/v2/invoicing/invoices");
     return { invoice: await this.getInvoice(id), debugId: res.debugId };
+  }
+
+  /**
+   * POST /v2/invoicing/search-invoices — find an invoice by its (unique) invoice number.
+   * Used to recover when a create succeeded at PayPal but the response was lost.
+   */
+  async findInvoiceByNumber(invoiceNumber: string): Promise<PayPalInvoice | null> {
+    const res = await this.request<{ items?: { id: string; detail?: { invoice_number?: string } }[] }>(
+      "POST",
+      "/v2/invoicing/search-invoices?page=1&page_size=5&total_required=false",
+      { body: { invoice_number: invoiceNumber } },
+    );
+    const hit = res.data?.items?.find((i) => i.detail?.invoice_number === invoiceNumber) ?? res.data?.items?.[0];
+    return hit ? this.getInvoice(hit.id) : null;
   }
 
   /** POST /v2/invoicing/invoices/{id}/send */
@@ -220,9 +238,10 @@ export class PayPalClient {
 }
 
 /** Maps our normalized invoice to the PayPal Invoicing v2 `invoice` schema. */
-export function buildInvoiceBody(inv: NormalizedInvoice) {
+export function buildInvoiceBody(inv: NormalizedInvoice, invoiceNumber?: string) {
   return {
     detail: {
+      ...(invoiceNumber ? { invoice_number: invoiceNumber, reference: invoiceNumber } : {}),
       currency_code: inv.currency,
       invoice_date: inv.issue_date,
       payment_term: { due_date: inv.due_date },

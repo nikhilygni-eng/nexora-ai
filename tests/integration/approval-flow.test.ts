@@ -135,3 +135,33 @@ describe("proposal → approve → PayPal", () => {
     expect(writes().filter((p) => p.endsWith("/remind"))).toHaveLength(1);
   });
 });
+
+describe("PayPal idempotency beyond PayPal-Request-Id", () => {
+  it("recovers when PayPal created the invoice but the response was lost (no duplicate)", async () => {
+    const { mockLoseNextResponse, mockStore } = await import("@/lib/paypal/mock");
+    const r = await runAgent({ orgId: ORG, message: "Bill Acme Corp $800 for the redesign. ap@acme.com", provider: new ScriptedProvider() });
+    const id = r.proposalIds[0];
+    mockLoseNextResponse(/\/v2\/invoicing\/invoices$/);
+    await expect(approveProposal(ORG, id)).rejects.toThrow(/reach PayPal/i);
+    expect(mockStore().invoices.size).toBe(1); // PayPal has it, we don't know yet
+    await approveProposal(ORG, id); // user clicks Retry
+    expect(mockStore().invoices.size).toBe(1); // recovered by invoice number, not re-created
+    const inv = getInvoiceByProposal(ORG, id)!;
+    expect(inv.invoice_number).toMatch(/^NX-[0-9A-F]{12}$/);
+    expect(inv.paypal_status).toBe("SENT");
+    expect(listAudit(ORG).some((a) => a.action === "paypal.invoice.recovered")).toBe(true);
+  });
+});
+
+describe("transient AI errors", () => {
+  it("retries once on unavailable, never on auth", async () => {
+    const { RetryingProvider, AIProviderError } = await import("@/lib/ai/provider");
+    let n = 0;
+    const flaky = { id: "gemini" as const, model: "m", generate: async () => { if (n++ === 0) throw new AIProviderError("unavailable", "503"); return { text: "ok", toolCalls: [] }; } };
+    expect((await new RetryingProvider(flaky, [1]).generate({ system: "", messages: [] })).text).toBe("ok");
+    let m = 0;
+    const bad = { id: "gemini" as const, model: "m", generate: async () => { m++; throw new AIProviderError("auth", "bad key"); } };
+    await expect(new RetryingProvider(bad, [1]).generate({ system: "", messages: [] })).rejects.toMatchObject({ kind: "auth" });
+    expect(m).toBe(1);
+  });
+});

@@ -12,6 +12,7 @@ type Store = {
   counter: number;
   calls: { method: string; path: string; requestId?: string }[];
   failNext?: { path: RegExp; status: number; body: unknown };
+  loseNext?: RegExp;
 };
 
 const g = globalThis as unknown as { __nexoraMockPayPal?: Store };
@@ -35,6 +36,11 @@ export function mockMarkPaid(id: string) {
   inv.payments = { paid_amount: inv.amount, transactions: [{ payment_date: new Date().toISOString().slice(0, 10) }] };
   inv.due_amount = { currency_code: inv.detail.currency_code, value: "0.00" };
   return true;
+}
+
+/** Simulate "PayPal processed the request but the response was lost" for the next matching call. */
+export function mockLoseNextResponse(path: RegExp) {
+  mockStore().loseNext = path;
 }
 
 export function mockFailNext(path: RegExp, status: number, body: unknown) {
@@ -81,6 +87,12 @@ export const mockPayPalFetcher: Fetcher = async (input, init) => {
   }
   if (!headers.get("Authorization")?.startsWith("Bearer ")) return json(401, { name: "AUTHENTICATION_FAILURE" });
 
+  if (s.loseNext && s.loseNext.test(path) && method === "POST") {
+    s.loseNext = undefined;
+    await handle(method, path, init?.body ? JSON.parse(String(init.body)) : undefined, s); // side effect happens…
+    throw new TypeError("fetch failed: socket hang up"); // …but the caller never sees the response
+  }
+
   if (requestId && method === "POST") {
     const cacheKey = `${path}::${requestId}`;
     const prev = s.requestIds.get(cacheKey);
@@ -96,7 +108,7 @@ export const mockPayPalFetcher: Fetcher = async (input, init) => {
 async function handle(method: string, path: string, body: Record<string, unknown> | undefined, s: Store): Promise<Response> {
   if (path === "/v2/invoicing/invoices" && method === "POST") {
     const b = body as {
-      detail: { currency_code: string; invoice_date: string; payment_term: { due_date: string } };
+      detail: { currency_code: string; invoice_date: string; payment_term: { due_date: string }; invoice_number?: string };
       primary_recipients: { billing_info: { email_address: string } }[];
       items: ItemIn[];
     };
@@ -108,6 +120,9 @@ async function handle(method: string, path: string, body: Record<string, unknown
         details: [{ field: "primary_recipients[0].billing_info.email_address", issue: "INVALID_EMAIL_ADDRESS" }],
       });
     }
+    if (b.detail.invoice_number && [...s.invoices.values()].some((x) => x.detail.invoice_number === b.detail.invoice_number)) {
+      return json(422, { name: "UNPROCESSABLE_ENTITY", message: "Duplicate invoice number.", details: [{ issue: "DUPLICATE_INVOICE_NUMBER" }] });
+    }
     s.counter += 1;
     const id = `INV2-MOCK-${String(s.counter).padStart(4, "0")}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const total = computeTotal(b.items);
@@ -115,7 +130,7 @@ async function handle(method: string, path: string, body: Record<string, unknown
       id,
       status: "DRAFT",
       detail: {
-        invoice_number: `MOCK-${String(1000 + s.counter)}`,
+        invoice_number: b.detail.invoice_number ?? `MOCK-${String(1000 + s.counter)}`,
         currency_code: b.detail.currency_code,
         invoice_date: b.detail.invoice_date,
         payment_term: b.detail.payment_term,
@@ -127,6 +142,11 @@ async function handle(method: string, path: string, body: Record<string, unknown
     };
     s.invoices.set(id, inv);
     return json(201, strip(inv));
+  }
+  if (path === "/v2/invoicing/search-invoices" && method === "POST") {
+    const num = (body as { invoice_number?: string } | undefined)?.invoice_number;
+    const items = [...s.invoices.values()].filter((x) => !num || x.detail.invoice_number === num).map(strip);
+    return json(200, { items });
   }
   const m = path.match(/^\/v2\/invoicing\/invoices\/([^/]+)(?:\/(send|remind|cancel))?$/);
   if (m) {

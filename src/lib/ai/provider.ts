@@ -91,3 +91,29 @@ export function extractJson(text: string): unknown {
     throw new AIProviderError("malformed", "Model output was not valid JSON");
   }
 }
+
+/**
+ * Retries transient provider failures (overloaded / rate-limited) once with backoff.
+ * Never retries auth, refusal, timeout or malformed output.
+ */
+export class RetryingProvider implements AIProvider {
+  constructor(private readonly inner: AIProvider, private readonly delaysMs: number[] = [1500]) {}
+  get id() {
+    return this.inner.id;
+  }
+  get model() {
+    return this.inner.model;
+  }
+  async generate(req: GenerateRequest): Promise<GenerateResult> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.inner.generate(req);
+      } catch (e) {
+        const transient = e instanceof AIProviderError && (e.kind === "unavailable" || e.kind === "rate_limited");
+        if (!transient || attempt >= this.delaysMs.length || req.signal?.aborted) throw e;
+        console.warn(`[ai] ${this.inner.id} ${e.kind}, retrying in ${this.delaysMs[attempt]}ms: ${e.message.slice(0, 200)}`);
+        await new Promise((r) => setTimeout(r, this.delaysMs[attempt]));
+      }
+    }
+  }
+}

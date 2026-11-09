@@ -2,7 +2,7 @@ import "server-only";
 import { aiModelName, getEnv } from "@/lib/env";
 import { GeminiProvider } from "./gemini";
 import { OpenAICompatibleProvider } from "./openai-compatible";
-import { AIProviderError, type AIProvider } from "./provider";
+import { AIProviderError, RetryingProvider, type AIProvider } from "./provider";
 import { ScriptedProvider } from "./scripted";
 
 const g = globalThis as unknown as { __nexoraAI?: { p: AIProvider; key: string }; __nexoraAIOverride?: AIProvider };
@@ -23,6 +23,7 @@ export function getAIProvider(): AIProvider {
   } else {
     p = new ScriptedProvider();
   }
+  if (p.id !== "mock") p = new RetryingProvider(p);
   g.__nexoraAI = { p, key };
   return p;
 }
