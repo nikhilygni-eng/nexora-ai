@@ -44,7 +44,7 @@ Also verified on `gemini-3.5-flash` (default thinking): same behaviors, 11/12 (i
 | `PayPal-Request-Id` on invoicing | ⚠️ | **Not documented** in the Invoicing v2 spec → not relied on. Deterministic invoice numbers + search recovery added instead (tested with a mock that loses the response) |
 | Read-only credential check | ⛔ | `npm run check:paypal` ready; blocked: `PAYPAL_CLIENT_ID/SECRET` empty in `.env.local` |
 | Real create → send → get → remind → cancel | ⛔ | `npm run test:sandbox` ready; same blocker |
-| Webhooks | ⬜ | implemented with signature verification; needs a public URL + `PAYPAL_WEBHOOK_ID` |
+| Webhooks | 🧪 | Signature gate, forged replay, malformed payloads, and transient sync retry covered by 7 local integration tests; real PayPal delivery still needs a public URL + `PAYPAL_WEBHOOK_ID` |
 
 No real PayPal operation has been performed yet. Nothing in this file treats mock results as Sandbox evidence.
 
@@ -58,6 +58,7 @@ No real PayPal operation has been performed yet. Nothing in this file treats moc
 | Gemini config: thinking level, temperature, auth/refusal/quota mapping | 🧪 | `tests/unit/gemini-config.test.ts` |
 | Env sandbox guard, setup status hides secrets, session tokens | 🧪 | `tests/unit/env.test.ts` |
 | PayPal client: body, OAuth cache, 401 refresh, network errors, debug IDs | 🧪 | `tests/unit/paypal-client.test.ts` |
+| Webhook integrity: signature before dedup, forged replays, malformed events, retry after sync failure | 🧪 | `tests/integration/webhook-security.test.ts` (7 tests) |
 | Approval gating, 3 concurrent clicks → 1 invoice, retry without duplicate, lost-response recovery, cancelled proposals, reminder gating, status sync | 🧪 | `tests/integration/approval-flow.test.ts` |
 | Transient AI retry policy (never retries auth / daily quota) | 🧪 | integration + unit |
 | Full UI flow (mock PayPal + scripted provider) | 🧪 | `tests/e2e/main-flow.spec.ts` |
@@ -67,7 +68,7 @@ No real PayPal operation has been performed yet. Nothing in this file treats moc
 | Where | lint | unit/integration | build | E2E | live agent | live UI |
 |---|---|---|---|---|---|---|
 | Cloud dev container | clean | 42/42 | OK | 3/3 | n/a (no key) | n/a |
-| Owner laptop (escanor), commit a8bdafb | clean | 42/42 | OK | 3/3 | **12/12** | **pass** |
+| Owner laptop (escanor), current local worktree (Nov 9) | clean | **49/49** | OK | **3/3** | **12/12** (previous live run) | **pass** (previous live run) |
 
 ## Bugs found by live testing (and fixed)
 

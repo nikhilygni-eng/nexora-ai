@@ -18,9 +18,23 @@ export async function POST(req: NextRequest) {
   const env = getEnv();
   if (!env.PAYPAL_WEBHOOK_ID) return NextResponse.json({ error: "Webhooks not configured" }, { status: 404 });
   const raw = await req.text();
-  let event: { id?: string; event_type?: string; resource?: { id?: string; invoice?: { id?: string } } };
+  let event: { id: string; event_type: string; resource?: { id?: string; invoice?: { id?: string } } };
   try {
-    event = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed) ||
+      !("id" in parsed) ||
+      typeof parsed.id !== "string" ||
+      !parsed.id.trim() ||
+      !("event_type" in parsed) ||
+      typeof parsed.event_type !== "string" ||
+      !parsed.event_type.trim()
+    ) {
+      return NextResponse.json({ error: "Invalid webhook event" }, { status: 400 });
+    }
+    event = parsed as typeof event;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -42,18 +56,31 @@ export async function POST(req: NextRequest) {
     verified = false;
   }
   const resourceId = event.resource?.invoice?.id ?? event.resource?.id ?? null;
-  if (event.id) {
-    const dup = getDb()
-      .prepare("INSERT OR IGNORE INTO webhook_events (id, org_id, event_type, resource_id, verified, received_at) VALUES (?,?,?,?,?,?)")
-      .run(event.id, DEFAULT_ORG_ID, event.event_type ?? "unknown", resourceId, verified ? 1 : 0, new Date().toISOString());
-    if (dup.changes === 0) return NextResponse.json({ ok: true, duplicate: true });
+  // Authenticate before reserving an event ID: otherwise a forged request can
+  // poison the deduplication table and suppress a legitimate webhook later.
+  if (!verified) {
+    logAudit({ orgId: DEFAULT_ORG_ID, actor: "paypal", action: "webhook.rejected", details: { event_type: event.event_type } });
+    return NextResponse.json({ error: "Signature verification failed" }, { status: 400 });
   }
-  logAudit({ orgId: DEFAULT_ORG_ID, actor: "paypal", action: verified ? "webhook.received" : "webhook.rejected", paypalInvoiceId: resourceId ?? undefined, details: { event_type: event.event_type } });
-  if (!verified) return NextResponse.json({ error: "Signature verification failed" }, { status: 400 });
+  const dup = getDb()
+    .prepare("INSERT OR IGNORE INTO webhook_events (id, org_id, event_type, resource_id, verified, received_at) VALUES (?,?,?,?,?,?)")
+    .run(event.id, DEFAULT_ORG_ID, event.event_type, resourceId, 1, new Date().toISOString());
+  if (dup.changes === 0) return NextResponse.json({ ok: true, duplicate: true });
+  logAudit({ orgId: DEFAULT_ORG_ID, actor: "paypal", action: "webhook.received", paypalInvoiceId: resourceId ?? undefined, details: { event_type: event.event_type } });
 
-  if (resourceId && event.event_type?.startsWith("INVOICING.")) {
+  if (resourceId && event.event_type.startsWith("INVOICING.")) {
     const row = getInvoiceByPaypalId(DEFAULT_ORG_ID, resourceId);
-    if (row) await syncInvoice(DEFAULT_ORG_ID, row.id).catch(() => undefined);
+    if (row) {
+      try {
+        await syncInvoice(DEFAULT_ORG_ID, row.id);
+      } catch {
+        // Leave the event eligible for PayPal's delivery retry instead of
+        // acknowledging a notification whose invoice update did not succeed.
+        getDb().prepare("DELETE FROM webhook_events WHERE id = ? AND org_id = ?").run(event.id, DEFAULT_ORG_ID);
+        logAudit({ orgId: DEFAULT_ORG_ID, actor: "paypal", action: "webhook.sync_retry", details: { event_type: event.event_type } });
+        return NextResponse.json({ error: "Temporary invoice sync failure" }, { status: 503 });
+      }
+    }
   }
   return NextResponse.json({ ok: true });
 }
