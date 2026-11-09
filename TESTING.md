@@ -67,7 +67,7 @@ No real PayPal operation has been performed yet. Nothing in this file treats moc
 | Where | lint | unit/integration | build | E2E | live agent | live UI |
 |---|---|---|---|---|---|---|
 | Cloud dev container | clean | 42/42 | OK | 3/3 | n/a (no key) | n/a |
-| Owner laptop (escanor) | clean | 33/33 (before today's changes) | OK | 3/3 | **12/12** | **pass** |
+| Owner laptop (escanor), commit a8bdafb | clean | 42/42 | OK | 3/3 | **12/12** | **pass** |
 
 ## Bugs found by live testing (and fixed)
 
