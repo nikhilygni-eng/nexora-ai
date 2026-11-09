@@ -63,7 +63,9 @@ test("analytics shows demo data labeled, with the AG Grid", async ({ page }) => 
   await page.goto("/login");
   await page.fill("#pc", "e2e-passcode");
   await page.click("button[type=submit]");
+  await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
   await page.goto("/app/settings");
+  await expect(page.locator("#s-name")).toBeVisible(); // settings fetched → page hydrated
   await page.getByRole("button", { name: "Load demo data" }).click();
   await expect(page.getByText(/Loaded 15 demo invoices/)).toBeVisible();
   await page.goto("/app/analytics");
