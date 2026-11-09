@@ -50,3 +50,9 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /coverage/
+
+# editor swap/backup files (can contain secrets, e.g. ..env.local.swp)
+*.swp
+*.swo
+*~
+.*.sw?

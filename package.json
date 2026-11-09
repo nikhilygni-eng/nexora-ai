@@ -12,7 +12,8 @@
     "test:e2e": "playwright test --trace off",
     "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
     "typecheck": "tsc --noEmit",
-    "test:all": "npm run lint && npm test && npm run build && npm run test:e2e"
+    "test:all": "npm run lint && npm test && npm run build && npm run test:e2e",
+    "check:live-agent": "node scripts/live-agent-check.mjs"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
