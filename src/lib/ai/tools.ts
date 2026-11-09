@@ -291,3 +291,9 @@ export const TOOL_LABELS: Record<string, string> = {
   summarize_receivables: "Summarized receivables",
   draft_reminder: "Drafted reminder",
 };
+
+export const TOOL_FAIL_LABELS: Record<string, string> = {
+  draft_invoice: "Draft needs details",
+  draft_reminder: "Reminder not possible",
+  get_invoice_status: "Status check failed",
+};

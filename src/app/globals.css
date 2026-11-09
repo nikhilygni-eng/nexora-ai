@@ -1,26 +1,137 @@
 @import "tailwindcss";
 
+/*
+  NEXORA design tokens — "carbon-copy invoice book".
+  Ink = Prussian blue chrome & text. Paper = cool white sheets.
+  Stamp = cobalt rubber-stamp ink for primary actions.
+  Canary / Rose = duplicate / triplicate carbon copies → "awaiting approval" / "overdue".
+  Ledger = paid.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #0f2a44;
+  --ink-2: #344b66;
+  --ink-3: #5b6f86;
+  --paper: #f4f6f9;
+  --sheet: #ffffff;
+  --rule: #d8dfe8;
+  --rule-strong: #b9c4d2;
+  --stamp: #2442c9;
+  --stamp-deep: #1a2f99;
+  --stamp-tint: #e3e8fb;
+  --canary: #f6e9a6;
+  --canary-ink: #5e4a00;
+  --rose: #f5d0d6;
+  --rose-ink: #8a1c2e;
+  --ledger: #1d7350;
+  --ledger-tint: #d4eee2;
+  --focus: #2442c9;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-stamp: var(--stamp);
+  --color-stamp-deep: var(--stamp-deep);
+  --color-stamp-tint: var(--stamp-tint);
+  --color-canary: var(--canary);
+  --color-canary-ink: var(--canary-ink);
+  --color-rose: var(--rose);
+  --color-rose-ink: var(--rose-ink);
+  --color-ledger: var(--ledger);
+  --color-ledger-tint: var(--ledger-tint);
+
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale (1.25 minor third-ish, set for UI density) */
+  --text-micro: 0.75rem;
+  --text-micro--line-height: 1rem;
+
+  --radius-control: 0.5rem;
+  --radius-sheet: 0.25rem;
+  --radius-panel: 0.875rem;
+
+  --shadow-sheet: 0 1px 0 var(--rule), 0 6px 0 -3px #e9edf3, 0 6px 0 -2px var(--rule), 0 18px 32px -18px rgb(15 42 68 / 0.28);
+  --shadow-lift: 0 10px 30px -14px rgb(15 42 68 / 0.35);
+
+  --animate-stamp: stamp 520ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@keyframes stamp {
+  0% {
+    opacity: 0;
+    transform: rotate(-9deg) scale(1.9);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(-9deg) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-9deg) scale(1);
   }
 }
 
+html {
+  color-scheme: light;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Perforated tear-off edge for invoice slips */
+.perforated {
+  position: relative;
+}
+.perforated::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 12px;
+  background: radial-gradient(circle at 6px 6px, var(--paper) 4px, transparent 4.5px) 0 0 / 14px 12px repeat-x;
+  pointer-events: none;
+}
+.perforated-line {
+  background-image: linear-gradient(to right, var(--rule-strong) 50%, transparent 0);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+  height: 1px;
+}
+
+/* Carbon-paper texture: faint ruled lines used on the hero sheet */
+.ruled {
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, #e8edf3 31px 32px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

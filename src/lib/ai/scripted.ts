@@ -10,6 +10,16 @@ export class ScriptedProvider implements AIProvider {
   readonly model = "scripted-test-provider";
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    if (req.jsonSchema?.name === "reminder") {
+      const f = JSON.parse(lastUserText(req.messages) || "{}") as { amount_due?: string; invoice_number?: string; due_date?: string };
+      return {
+        text: JSON.stringify({
+          subject: `Reminder: invoice ${f.invoice_number ?? ""} is due`.trim(),
+          note: `Hi, a quick reminder that ${f.amount_due ?? "the balance"} on invoice ${f.invoice_number ?? ""} is due on ${f.due_date ?? "the due date"}. You can pay securely through PayPal. Thank you!`,
+        }),
+        toolCalls: [],
+      };
+    }
     if (req.jsonSchema) {
       return { text: JSON.stringify({ insights: [{ kind: "trend", title: "Scripted insight", detail: "Test provider output.", metric_keys: ["totals.outstanding"] }] }), toolCalls: [] };
     }

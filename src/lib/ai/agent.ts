@@ -5,7 +5,7 @@ import { todayISO } from "@/lib/invoices/service";
 import { milliToPercentString } from "@/lib/money";
 import { getAIProvider } from ".";
 import { AIProviderError, type AgentMessage, type AIProvider, type ToolCall } from "./provider";
-import { TOOL_LABELS, TOOLS, type ToolContext } from "./tools";
+import { TOOL_FAIL_LABELS, TOOL_LABELS, TOOLS, type ToolContext } from "./tools";
 
 export const MAX_STEPS = 6;
 const HISTORY_LIMIT = 40;
@@ -132,7 +132,7 @@ export async function runAgent(opts: { orgId: string; conversationId?: string | 
       const ok = !(output && typeof output === "object" && "ok" in output && (output as { ok: unknown }).ok === false);
       trace.push({
         tool: call.name,
-        label: TOOL_LABELS[call.name] ?? call.name,
+        label: ok ? (TOOL_LABELS[call.name] ?? call.name) : (TOOL_FAIL_LABELS[call.name] ?? `${call.name} needs attention`),
         ok,
         readOnly: tool?.readOnly ?? true,
         summary: ok ? undefined : String((output as { error?: string; missing?: string[] }).error ?? `Missing: ${((output as { missing?: string[] }).missing ?? []).join(", ")}`),
