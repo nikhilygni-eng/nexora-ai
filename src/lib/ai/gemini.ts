@@ -1,13 +1,27 @@
 import "server-only";
-import { GoogleGenAI, type Content, type Part } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, type Content, type GenerateContentConfig, type Part } from "@google/genai";
 import { AIProviderError, type AIProvider, type AgentMessage, type GenerateRequest, type GenerateResult } from "./provider";
 
 export class GeminiProvider implements AIProvider {
   readonly id = "gemini" as const;
   private readonly ai: GoogleGenAI;
 
-  constructor(apiKey: string, readonly model: string, private readonly timeoutMs: number) {
-    this.ai = new GoogleGenAI({ apiKey });
+  constructor(
+    apiKey: string,
+    readonly model: string,
+    private readonly timeoutMs: number,
+    private readonly thinking: "minimal" | "low" | "medium" | "high" = "low",
+    client?: Pick<GoogleGenAI, "models">,
+  ) {
+    this.ai = (client ?? new GoogleGenAI({ apiKey })) as GoogleGenAI;
+  }
+
+  /** Gemini 3.x: control reasoning depth and keep the default temperature (Google advises against lowering it). */
+  private modelTuning(temperature?: number): Partial<GenerateContentConfig> {
+    if (isGemini3(this.model)) {
+      return { thinkingConfig: { thinkingLevel: THINKING[this.thinking] } };
+    }
+    return { temperature: temperature ?? 0.2 };
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
@@ -20,7 +34,7 @@ export class GeminiProvider implements AIProvider {
         contents,
         config: {
           systemInstruction: req.system,
-          temperature: req.temperature ?? 0.2,
+          ...this.modelTuning(req.temperature),
           abortSignal: signal,
           ...(req.tools?.length
             ? {
@@ -96,9 +110,20 @@ function mapGeminiError(e: unknown, signal: AbortSignal): AIProviderError {
   const err = e as { status?: number; message?: string; name?: string };
   const msg = err?.message ?? String(e);
   const status = err?.status ?? Number(msg.match(/\b(4\d\d|5\d\d)\b/)?.[1]);
-  if (status === 401 || status === 403 || /API key not valid|PERMISSION_DENIED/i.test(msg)) return new AIProviderError("auth", msg);
+  if (status === 401 || status === 403 || /API key not valid|API_KEY_INVALID|PERMISSION_DENIED/i.test(msg)) return new AIProviderError("auth", "Gemini rejected the API key");
   if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return new AIProviderError("rate_limited", msg);
   if (status === 404 || /not found/i.test(msg)) return new AIProviderError("unavailable", `Model not available: ${msg}`);
   if (err?.name === "AbortError" || err?.name === "TimeoutError") return new AIProviderError("timeout", msg);
   return new AIProviderError("unavailable", msg);
+}
+
+const THINKING = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+} as const;
+
+export function isGemini3(model: string) {
+  return /^gemini-3/i.test(model.replace(/^models\//, ""));
 }

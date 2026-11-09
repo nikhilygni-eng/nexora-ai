@@ -11,12 +11,12 @@ export function getAIProvider(): AIProvider {
   if (g.__nexoraAIOverride) return g.__nexoraAIOverride;
   const env = getEnv();
   const model = aiModelName(env);
-  const key = `${env.AI_PROVIDER}|${model}|${env.FREELLMAPI_BASE_URL}`;
+  const key = `${env.AI_PROVIDER}|${model}|${env.FREELLMAPI_BASE_URL}|${env.AI_THINKING_LEVEL}`;
   if (g.__nexoraAI?.key === key) return g.__nexoraAI.p;
   let p: AIProvider;
   if (env.AI_PROVIDER === "gemini") {
     if (!env.GEMINI_API_KEY) throw new AIProviderError("not_configured", "GEMINI_API_KEY is not set");
-    p = new GeminiProvider(env.GEMINI_API_KEY, model, env.AI_TIMEOUT_MS);
+    p = new GeminiProvider(env.GEMINI_API_KEY, model, env.AI_TIMEOUT_MS, env.AI_THINKING_LEVEL);
   } else if (env.AI_PROVIDER === "freellmapi") {
     if (!env.FREELLMAPI_API_KEY) throw new AIProviderError("not_configured", "FREELLMAPI_API_KEY is not set");
     p = new OpenAICompatibleProvider("freellmapi", env.FREELLMAPI_BASE_URL, env.FREELLMAPI_API_KEY, model, env.AI_TIMEOUT_MS);

@@ -28,7 +28,8 @@ describe("session tokens", () => {
     const t = await createSessionToken("pass123");
     expect(await verifySessionToken(t, "pass123")).toBe(true);
     expect(await verifySessionToken(t, "other")).toBe(false);
-    expect(await verifySessionToken(t.slice(0, -1) + "0", "pass123")).toBe(false);
+    const flipped = t.slice(0, -1) + (t.endsWith("0") ? "1" : "0"); // always a real change
+    expect(await verifySessionToken(flipped, "pass123")).toBe(false);
     expect(await verifySessionToken(await createSessionToken("pass123", Date.now() - 13 * 3600_000), "pass123")).toBe(false);
     expect(await verifySessionToken(undefined, "pass123")).toBe(false);
   });

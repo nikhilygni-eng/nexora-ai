@@ -25,6 +25,8 @@ const EnvSchema = z.object({
   FREELLMAPI_API_KEY: optionalString,
   FREELLMAPI_MODEL: optionalString,
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
+  /** Gemini 3.x reasoning depth. Lower = faster tool calls. */
+  AI_THINKING_LEVEL: z.enum(["minimal", "low", "medium", "high"]).default("low"),
   APP_PASSCODE: optionalString,
   DATABASE_PATH: optionalString.transform((v) => v ?? "./data/nexora.db"),
   APP_BASE_URL: optionalString,
