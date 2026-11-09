@@ -26,8 +26,16 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.5-flash
+      - key: AI_THINKING_LEVEL
+        value: low
+      - key: AI_TIMEOUT_MS
+        value: "60000"
       - key: APP_PASSCODE
         sync: false
       - key: DATABASE_PATH
         value: ./data/nexora.db
+      # Optional: enables /api/webhooks/paypal (create the webhook in the Sandbox app pointing at
+      # https://<your-service>.onrender.com/api/webhooks/paypal, then paste its ID here).
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false

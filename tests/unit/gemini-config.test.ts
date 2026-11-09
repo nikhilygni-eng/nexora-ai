@@ -45,3 +45,28 @@ describe("Gemini provider config", () => {
     await expect(new GeminiProvider("k", "gemini-3.5-flash", 5000).generate({ system: "s", messages: [{ role: "user", text: "x" }] })).rejects.toMatchObject({ kind: "refusal" });
   });
 });
+
+describe("Gemini quota errors", () => {
+  const err = (quotaId: string, delay: string) =>
+    Object.assign(new Error(`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"violations":[{"quotaId":"${quotaId}"}]},{"retryDelay":"${delay}"}]}}`), { status: 429 });
+
+  it("explains a per-minute limit with the wait time", async () => {
+    generateContent.mockRejectedValueOnce(err("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "22s"));
+    const e = await new GeminiProvider("k", "gemini-3.5-flash-lite", 5000).generate({ system: "s", messages: [{ role: "user", text: "x" }] }).catch((x) => x);
+    expect(e.kind).toBe("rate_limited");
+    expect(e.quota).toEqual({ retryAfterSec: 22, daily: false });
+    expect(e.userMessage).toMatch(/Try again in 22 seconds/);
+  });
+
+  it("explains an exhausted daily quota and does not retry it", async () => {
+    generateContent.mockRejectedValueOnce(err("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "66457s"));
+    const e = await new GeminiProvider("k", "gemini-3.5-flash", 5000).generate({ system: "s", messages: [{ role: "user", text: "x" }] }).catch((x) => x);
+    expect(e.quota.daily).toBe(true);
+    expect(e.userMessage).toMatch(/daily free-tier quota/);
+    const { RetryingProvider } = await import("@/lib/ai/provider");
+    let calls = 0;
+    const p = { id: "gemini" as const, model: "m", generate: async () => { calls++; throw e; } };
+    await expect(new RetryingProvider(p, [1]).generate({ system: "", messages: [] })).rejects.toBe(e);
+    expect(calls).toBe(1);
+  });
+});

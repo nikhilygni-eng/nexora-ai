@@ -111,7 +111,14 @@ function mapGeminiError(e: unknown, signal: AbortSignal): AIProviderError {
   const msg = err?.message ?? String(e);
   const status = err?.status ?? Number(msg.match(/\b(4\d\d|5\d\d)\b/)?.[1]);
   if (status === 401 || status === 403 || /API key not valid|API_KEY_INVALID|PERMISSION_DENIED/i.test(msg)) return new AIProviderError("auth", "Gemini rejected the API key");
-  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return new AIProviderError("rate_limited", msg);
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) {
+    const delay = msg.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/);
+    const quotaId = msg.match(/"quotaId"\s*:\s*"([^"]+)"/)?.[1] ?? "";
+    return new AIProviderError("rate_limited", `Gemini quota ${quotaId || "limit"} reached`, {
+      retryAfterSec: delay ? Math.ceil(Number(delay[1])) : undefined,
+      daily: /PerDay/i.test(quotaId),
+    });
+  }
   if (status === 404 || /not found/i.test(msg)) return new AIProviderError("unavailable", `Model not available: ${msg}`);
   if (err?.name === "AbortError" || err?.name === "TimeoutError") return new AIProviderError("timeout", msg);
   return new AIProviderError("unavailable", msg);

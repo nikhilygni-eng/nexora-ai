@@ -35,7 +35,12 @@ export type GenerateResult = {
 export type AIErrorKind = "not_configured" | "timeout" | "refusal" | "rate_limited" | "auth" | "unavailable" | "malformed";
 
 export class AIProviderError extends Error {
-  constructor(public readonly kind: AIErrorKind, message: string) {
+  constructor(
+    public readonly kind: AIErrorKind,
+    message: string,
+    /** For rate limits: seconds until the provider accepts requests again, and whether it's a daily quota. */
+    public readonly quota?: { retryAfterSec?: number; daily?: boolean },
+  ) {
     super(message);
     this.name = "AIProviderError";
   }
@@ -48,7 +53,12 @@ export class AIProviderError extends Error {
       case "refusal":
         return "The AI model declined this request. Rephrase it as an invoicing task.";
       case "rate_limited":
-        return "The AI provider is rate-limiting requests. Wait a few seconds and try again.";
+        if (this.quota?.daily) {
+          return "The AI model's daily free-tier quota is used up. Switch AI_MODEL (e.g. gemini-3.5-flash-lite) or enable billing for the API key.";
+        }
+        return this.quota?.retryAfterSec
+          ? `The AI provider's per-minute limit was reached. Try again in ${this.quota.retryAfterSec} seconds.`
+          : "The AI provider is rate-limiting requests. Wait a few seconds and try again.";
       case "auth":
         return "The AI provider rejected the API key. Check it in .env.local.";
       case "malformed":
@@ -109,7 +119,10 @@ export class RetryingProvider implements AIProvider {
       try {
         return await this.inner.generate(req);
       } catch (e) {
-        const transient = e instanceof AIProviderError && (e.kind === "unavailable" || e.kind === "rate_limited");
+        // Daily quotas and long waits are not worth retrying inside a request.
+        const transient =
+          e instanceof AIProviderError &&
+          (e.kind === "unavailable" || (e.kind === "rate_limited" && !e.quota?.daily && (e.quota?.retryAfterSec ?? 0) <= 3));
         if (!transient || attempt >= this.delaysMs.length || req.signal?.aborted) throw e;
         console.warn(`[ai] ${this.inner.id} ${e.kind}, retrying in ${this.delaysMs[attempt]}ms: ${e.message.slice(0, 200)}`);
         await new Promise((r) => setTimeout(r, this.delaysMs[attempt]));

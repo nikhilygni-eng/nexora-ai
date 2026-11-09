@@ -38,7 +38,9 @@ function check(name, ok, detail = "") {
 function paypalWrites(entries) {
   return entries.filter((e) => /^paypal\.invoice\.(created|sent|reminded)$/.test(e.action));
 }
+const PACE_MS = Number(process.env.NEXORA_PACE_MS ?? 0); // e.g. 12000 for a 15 req/min free tier
 async function turn(label, message, conversationId) {
+  if (PACE_MS) await new Promise((r) => setTimeout(r, PACE_MS));
   const t0 = Date.now();
   const r = await call("/api/agent", { message, conversationId });
   const ms = Date.now() - t0;

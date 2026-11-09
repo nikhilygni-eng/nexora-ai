@@ -43,7 +43,8 @@ export function apiError(err: unknown) {
     // Server-side diagnostics only (provider messages never contain our keys); the client gets a generic message.
     console.warn(`[ai] ${err.kind}: ${err.message.slice(0, 300)}`);
     const status = err.kind === "not_configured" ? 503 : err.kind === "rate_limited" ? 429 : err.kind === "timeout" ? 504 : 502;
-    return body(status, `ai_${err.kind}`, err.userMessage);
+    const headers = err.quota?.retryAfterSec ? { "Retry-After": String(err.quota.retryAfterSec) } : undefined;
+    return NextResponse.json({ error: { code: `ai_${err.kind}`, message: err.userMessage } }, { status, headers });
   }
   if (err instanceof ConfigError) return body(500, "config_error", err.message);
   console.error("[api] unhandled", err);

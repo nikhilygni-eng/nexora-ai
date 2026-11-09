@@ -119,7 +119,7 @@ Open http://localhost:3000 and sign in with your `APP_PASSCODE`. `/setup` lists 
 | `PAYPAL_BASE_URL` | `https://api-m.sandbox.paypal.com` (enforced) |
 | `AI_PROVIDER` | `freellmapi` (default) or `gemini` |
 | `FREELLMAPI_BASE_URL`, `FREELLMAPI_API_KEY`, `FREELLMAPI_MODEL` | Local [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) router (`http://localhost:3001/v1`, model `auto:smart`) |
-| `GEMINI_API_KEY`, `AI_MODEL` | Google AI Studio key; e.g. `gemini-2.5-flash` |
+| `GEMINI_API_KEY`, `AI_MODEL`, `AI_THINKING_LEVEL` | Google AI Studio key; `gemini-3.5-flash` or `gemini-3.5-flash-lite`; thinking `low` (recommended for speed) |
 | `APP_PASSCODE` | ≥ 6 characters |
 | `DATABASE_PATH` | default `./data/nexora.db` |
 | `PAYPAL_WEBHOOK_ID` | optional; enables `/api/webhooks/paypal` |

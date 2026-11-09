@@ -86,7 +86,7 @@ export type SetupStatus = {
 };
 
 export function aiModelName(env: Env): string {
-  if (env.AI_PROVIDER === "gemini") return env.AI_MODEL ?? "gemini-2.5-flash";
+  if (env.AI_PROVIDER === "gemini") return env.AI_MODEL ?? "gemini-3.5-flash";
   if (env.AI_PROVIDER === "freellmapi") return env.FREELLMAPI_MODEL ?? env.AI_MODEL ?? "auto";
   return "scripted-test-provider";
 }
