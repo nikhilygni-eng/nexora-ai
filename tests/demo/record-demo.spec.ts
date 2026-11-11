@@ -25,15 +25,41 @@ const problems: string[] = [];
 
 test.setTimeout(10 * 60_000);
 
-async function agentTurn(page: Page, me: Human, rec: Recording, text: string) {
+/**
+ * Evidence for the run log: which model, which PayPal invoice, which PayPal calls. IDs, links and
+ * status codes only, never credentials. Log-only: it can't fail or interrupt the recording.
+ */
+async function note(label: string, read: () => Promise<string>) {
+  try {
+    console.log(`[demo] evidence | ${label}: ${await read()}`);
+  } catch (e) {
+    console.log(`[demo] evidence | ${label}: not available (${String((e as Error).message).slice(0, 120)})`);
+  }
+}
+
+async function agentTurn(page: Page, me: Human, rec: Recording, label: string, text: string) {
   const composer = page.locator("#composer");
+  const typingStarted = Date.now();
   await me.type(composer, text);
+  const typingMs = Date.now() - typingStarted;
   await expect(composer).toHaveValue(text);
   await me.pause(650); // a beat before sending
   const done = page.waitForResponse((r) => r.url().endsWith("/api/agent") && r.request().method() === "POST", { timeout: 120_000 });
+  const sent = Date.now();
   await page.keyboard.press("Enter");
   const res = await rec.segment("wait", () => done);
-  expect(res.status(), `agent turn failed: ${await res.text()}`).toBe(200);
+  const answeredMs = Date.now() - sent;
+  const body = await res.text();
+  expect(res.status(), `agent turn failed: ${body}`).toBe(200);
+  await note(`AI turn "${label}"`, async () => {
+    const j = JSON.parse(body) as { provider?: string; model?: string; trace?: { tool: string; ok: boolean }[]; proposals?: unknown[] };
+    const wpm = Math.round(text.length / 5 / (typingMs / 60_000));
+    return (
+      `provider=${j.provider} model=${j.model} answered in ${(answeredMs / 1000).toFixed(1)} s | ` +
+      `tools: ${(j.trace ?? []).map((t) => `${t.tool}:${t.ok ? "ok" : "asked-for-more"}`).join(", ") || "none"} | proposals: ${(j.proposals ?? []).length} | ` +
+      `typed ${text.length} characters in ${(typingMs / 1000).toFixed(1)} s (${wpm} wpm including the click)`
+    );
+  });
   await me.pause(500);
 }
 
@@ -85,12 +111,16 @@ test("record the NEXORA demo", async ({ page }) => {
     await page.waitForLoadState("networkidle").catch(() => undefined);
     await me.wake();
     await say(real ? "Connected to the real PayPal Sandbox and Google Gemini." : "REHEARSAL: mock PayPal + scripted test AI (labeled in the UI).");
+    await note("configuration", async () => {
+      const j = (await (await page.request.get("/api/setup")).json()) as Record<string, unknown>;
+      return `PayPal mode=${j.paypalMode} sandbox=${j.sandbox} ready=${j.paypalReady} | AI provider=${j.aiProvider} model=${j.aiModel} ready=${j.aiReady}`;
+    });
     await hold(2200);
 
     // 3. Plain-English request → the agent asks instead of guessing
     scene("describe the job", 18);
     await say("Describe the job in plain English.");
-    await agentTurn(page, me, rec, "Bill Acme Corp $800 for the landing page redesign, due in 14 days.");
+    await agentTurn(page, me, rec, "describe the job", "Bill Acme Corp $800 for the landing page redesign, due in 14 days.");
     await say("It doesn't know Acme's email, so it asks. NEXORA never guesses an address.");
     await hold(3400, true);
     await rec.shot("02-asks-for-email");
@@ -98,7 +128,7 @@ test("record the NEXORA demo", async ({ page }) => {
     // 4. Answer → invoice proposal
     scene("client email", 42);
     await say("Give it the client's email.");
-    await agentTurn(page, me, rec, CLIENT_EMAIL);
+    await agentTurn(page, me, rec, "client email", CLIENT_EMAIL);
     const approve = page.getByRole("button", { name: "Approve & send via PayPal" });
     await expect(approve).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText(CLIENT_EMAIL).last()).toBeVisible();
@@ -148,6 +178,17 @@ test("record the NEXORA demo", async ({ page }) => {
       expect((await synced).status(), "status refresh failed").toBe(200);
       await me.pause(1800);
     });
+    const invoiceId = new URL(page.url()).pathname.split("/").pop() ?? "";
+    const invoiceEvidence = () =>
+      note("invoice", async () => {
+        const j = (await (await page.request.get(`/api/invoices/${invoiceId}`)).json()) as { invoice?: Record<string, unknown> };
+        const i = j.invoice ?? {};
+        return (
+          `PayPal ID ${i.paypal_invoice_id ?? "-"} | number ${i.invoice_number ?? "-"} | source ${i.source} | NEXORA status ${i.status} | ` +
+          `PayPal status ${i.paypal_status ?? "-"} | total ${i.total_minor} minor units ${i.currency} | payer link ${i.recipient_view_url ?? "none"}`
+        );
+      });
+    await invoiceEvidence();
     await rec.shot("05-invoice-detail");
 
     if (real) {
@@ -170,6 +211,7 @@ test("record the NEXORA demo", async ({ page }) => {
         await me.wake();
         await rec.segment("wait", () => me.pause(3000)); // let PayPal's page finish drawing
         await say("PayPal's own invoice page: the client pays by PayPal or card.");
+        await note("PayPal payer page", async () => `host ${new URL(page.url()).host} | title "${await page.title()}"`);
         await hold(3800, true);
         await rec.shot("06-paypal-payer-view");
         await page.goto(back);
@@ -192,6 +234,7 @@ test("record the NEXORA demo", async ({ page }) => {
     await rec.shot("07-reminder-draft");
     await me.click(sendReminder, { dwellMs: 600 });
     await rec.segment("wait", () => expect(page.getByText("PayPal sent the reminder")).toBeVisible({ timeout: 90_000 }));
+    await invoiceEvidence();
     await hold(2000);
 
     if (!real) {
@@ -218,6 +261,11 @@ test("record the NEXORA demo", async ({ page }) => {
     const insightsRes = await rec.segment("wait", () => insights);
     if (insightsRes.status() !== 200) problems.push(`AI insights returned HTTP ${insightsRes.status()}: ${(await insightsRes.text()).slice(0, 300)}`);
     else if (!(((await insightsRes.json()) as { insights?: unknown[] }).insights ?? []).length) problems.push("AI insights returned no verified insight");
+    await note("AI insights", async () => {
+      const j = (await insightsRes.json()) as { model?: string; insights?: { kind: string; grounded?: unknown[] }[]; dropped?: number; cached?: boolean };
+      const list = j.insights ?? [];
+      return `HTTP ${insightsRes.status()} | model=${j.model} | kept ${list.length} (${list.map((x) => `${x.kind}, ${(x.grounded ?? []).length} cited figure(s)`).join("; ")}) | discarded ${j.dropped ?? 0} | cached=${j.cached}`;
+    });
     await me.pause(700);
     const basedOn = page.getByText(/Based on \d+ figure/).first();
     if (await basedOn.isVisible().catch(() => false)) await me.reveal(basedOn);
@@ -251,6 +299,11 @@ test("record the NEXORA demo", async ({ page }) => {
     await expect(page.getByText("PayPal created the draft invoice").first()).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(/\/app\/activity$/);
     await say("Every AI proposal, approval and PayPal call is logged with PayPal's debug ID.");
+    await note("PayPal calls in the audit log, oldest first", async () => {
+      const j = (await (await page.request.get("/api/activity")).json()) as { entries?: { paypal_endpoint: string | null; http_status: number | null; debug_id: string | null }[] };
+      const calls = (j.entries ?? []).filter((e) => e.paypal_endpoint).reverse();
+      return `${calls.length} call(s): ` + calls.slice(0, 40).map((e) => `${e.paypal_endpoint} → ${e.http_status}${e.debug_id ? ` [debug ${e.debug_id}]` : ""}`).join(" ; ");
+    });
     await hold(3600, true);
     await rec.shot("11-activity-log");
     await say("NEXORA AI: say who owes you, approve, and PayPal does the rest.");
