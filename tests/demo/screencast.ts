@@ -12,6 +12,12 @@ import type { CDPSession, Page } from "@playwright/test";
 export type Recording = {
   caption(text: string): Promise<void>;
   shot(name: string): Promise<void>;
+  /**
+   * Marks the time spent in `fn` as trimmable in the final edit: "wait" = waiting on the AI or PayPal
+   * (the encoder may shorten it, never speed it up), "optional" = a scene that can be dropped if the
+   * video would otherwise run past three minutes.
+   */
+  segment<T>(kind: "wait" | "optional", fn: () => Promise<T>): Promise<T>;
   /** Re-attach after a cross-site navigation (the renderer can change). */
   restart(): Promise<void>;
   stop(): Promise<{ frames: number; seconds: number }>;
@@ -23,6 +29,7 @@ export async function startRecording(page: Page, outDir: string, size = { width:
   fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
   const frames: { file: string; t: number }[] = [];
   const captions: { t: number; text: string }[] = [];
+  const segments: { kind: "wait" | "optional"; a: number; b: number }[] = [];
   let n = 0;
   let cdp: CDPSession;
   const startedAt = Date.now() / 1000;
@@ -46,6 +53,14 @@ export async function startRecording(page: Page, outDir: string, size = { width:
     async shot(name: string) {
       await page.screenshot({ path: path.join(outDir, "shots", `${name}.jpg`), type: "jpeg", quality: 92 });
     },
+    async segment<T>(kind: "wait" | "optional", fn: () => Promise<T>): Promise<T> {
+      const a = Date.now() / 1000;
+      try {
+        return await fn();
+      } finally {
+        segments.push({ kind, a, b: Date.now() / 1000 });
+      }
+    },
     async restart() {
       await cdp.send("Page.stopScreencast").catch(() => undefined);
       await cdp.detach().catch(() => undefined);
@@ -56,8 +71,25 @@ export async function startRecording(page: Page, outDir: string, size = { width:
       await cdp.send("Page.stopScreencast").catch(() => undefined);
       const endedAt = Date.now() / 1000;
       frames.sort((a, b) => a.t - b.t);
-      fs.writeFileSync(path.join(outDir, "frames.json"), JSON.stringify({ startedAt, endedAt, frames, captions }, null, 0));
+      fs.writeFileSync(path.join(outDir, "frames.json"), JSON.stringify({ startedAt, endedAt, frames, captions, segments }, null, 0));
       return { frames: frames.length, seconds: Math.round(endedAt - (frames[0]?.t ?? startedAt)) };
+    },
+  };
+}
+
+/**
+ * Rehearsal without a camera: same script, but no frames, screenshots or files are produced.
+ * Used to check every click, edit and screen transition against the app before the real recording.
+ */
+export function startDryRun(): Recording {
+  const startedAt = Date.now();
+  return {
+    async caption() {},
+    async shot() {},
+    segment: (_kind, fn) => fn(),
+    async restart() {},
+    async stop() {
+      return { frames: 0, seconds: Math.round((Date.now() - startedAt) / 1000) };
     },
   };
 }

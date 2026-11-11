@@ -8,6 +8,11 @@ name: Demo video
 # Manual start only (or by the secrets watcher), so pushing recorder changes never launches a recording.
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rehearsal: run the walkthrough with test providers. No video is captured, encoded or published."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -22,11 +27,12 @@ jobs:
     timeout-minutes: 25
     env:
       # The buyer email isn't secret, so a repository *variable* also works for it.
-      DEMO_MODE: ${{ (secrets.PAYPAL_CLIENT_ID != '' && secrets.PAYPAL_CLIENT_SECRET != '' && secrets.GEMINI_API_KEY != '' && (secrets.SANDBOX_BUYER_EMAIL != '' || vars.SANDBOX_BUYER_EMAIL != '')) && 'sandbox' || 'mock' }}
-      PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
-      PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      SANDBOX_BUYER_EMAIL: ${{ secrets.SANDBOX_BUYER_EMAIL || vars.SANDBOX_BUYER_EMAIL }}
+      DEMO_CAPTURE: ${{ inputs.dry_run && 'off' || 'on' }}
+      DEMO_MODE: ${{ inputs.dry_run && 'mock' || (secrets.PAYPAL_CLIENT_ID != '' && secrets.PAYPAL_CLIENT_SECRET != '' && secrets.GEMINI_API_KEY != '' && (secrets.SANDBOX_BUYER_EMAIL != '' || vars.SANDBOX_BUYER_EMAIL != '')) && 'sandbox' || 'mock' }}
+      PAYPAL_CLIENT_ID: ${{ !inputs.dry_run && secrets.PAYPAL_CLIENT_ID || '' }}
+      PAYPAL_CLIENT_SECRET: ${{ !inputs.dry_run && secrets.PAYPAL_CLIENT_SECRET || '' }}
+      GEMINI_API_KEY: ${{ !inputs.dry_run && secrets.GEMINI_API_KEY || '' }}
+      SANDBOX_BUYER_EMAIL: ${{ !inputs.dry_run && (secrets.SANDBOX_BUYER_EMAIL || vars.SANDBOX_BUYER_EMAIL) || '' }}
     steps:
       - name: Which settings can this run see? (yes/no only, never values)
         run: |
@@ -50,19 +56,20 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: ffmpeg
+        if: ${{ !inputs.dry_run }}
         run: which ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
-      - name: Record (${{ env.DEMO_MODE }})
+      - name: Record (${{ env.DEMO_MODE }}, capture ${{ env.DEMO_CAPTURE }})
         run: npx playwright test -c playwright.demo.config.ts
       - name: Encode MP4
-        if: always()
+        if: ${{ always() && !inputs.dry_run }}
         run: test -f demo-output/frames.json && node scripts/encode-demo.mjs demo-output
       - name: Publish to the demo-output branch
-        if: always()
+        if: ${{ always() && !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p pub && cp -r demo-output/shots pub/ 2>/dev/null || true
-          cp demo-output/nexora-demo.mp4 pub/ 2>/dev/null || true
+          cp demo-output/nexora-demo.mp4 demo-output/nexora-demo-full.mp4 pub/ 2>/dev/null || true
           echo "mode=$DEMO_MODE commit=${GITHUB_SHA::7} run=${GITHUB_RUN_ID} at=$(date -u +%FT%TZ) status=${{ job.status }}" > pub/INFO.txt
           cd pub && git init -q && git checkout -q -b demo-output && git add -A
           git -c user.name="nexora-ci" -c user.email="nexora-ci@users.noreply.github.com" commit -qm "Demo video ($DEMO_MODE) from ${GITHUB_SHA::7}"

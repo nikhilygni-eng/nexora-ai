@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { CURSOR_SCRIPT, Human } from "./human";
-import { startRecording } from "./screencast";
+import { startDryRun, startRecording, type Recording } from "./screencast";
 
 /**
  * Records the Devpost demo video: the full NEXORA loop in a real browser, driven like a person
@@ -18,17 +18,21 @@ const PASSCODE = process.env.DEMO_PASSCODE ?? "demo-passcode";
 const CLIENT_EMAIL = process.env.SANDBOX_BUYER_EMAIL || "ap@acme-corp.example";
 const OUT = process.env.DEMO_OUT ?? "demo-output";
 const real = MODE === "sandbox";
+/** DEMO_CAPTURE=off rehearses the walkthrough with no video, screenshots or files. */
+const CAPTURE = process.env.DEMO_CAPTURE !== "off";
 /** Live steps that didn't work. In sandbox mode any of these fails the run (the partial video is still encoded). */
 const problems: string[] = [];
 
 test.setTimeout(10 * 60_000);
 
-async function agentTurn(page: Page, me: Human, text: string) {
-  await me.type(page.locator("#composer"), text);
+async function agentTurn(page: Page, me: Human, rec: Recording, text: string) {
+  const composer = page.locator("#composer");
+  await me.type(composer, text);
+  await expect(composer).toHaveValue(text);
   await me.pause(650); // a beat before sending
   const done = page.waitForResponse((r) => r.url().endsWith("/api/agent") && r.request().method() === "POST", { timeout: 120_000 });
   await page.keyboard.press("Enter");
-  const res = await done;
+  const res = await rec.segment("wait", () => done);
   expect(res.status(), `agent turn failed: ${await res.text()}`).toBe(200);
   await me.pause(500);
 }
@@ -36,7 +40,7 @@ async function agentTurn(page: Page, me: Human, text: string) {
 test("record the NEXORA demo", async ({ page }) => {
   await page.addInitScript(CURSOR_SCRIPT);
   await page.goto("/");
-  const rec = await startRecording(page, OUT);
+  const rec = CAPTURE ? await startRecording(page, OUT) : startDryRun();
   const me = new Human(page);
   const t0 = Date.now();
   const elapsed = () => (Date.now() - t0) / 1000;
@@ -80,6 +84,7 @@ test("record the NEXORA demo", async ({ page }) => {
     await me.pause(450);
     await me.click(page.locator("button[type=submit]"));
     await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
+    await expect(page).toHaveURL(/\/app$/);
     await me.wake();
     await say(real ? "Connected to the real PayPal Sandbox and Google Gemini." : "REHEARSAL: mock PayPal + scripted test AI (labeled in the UI).");
     await hold(2200);
@@ -87,7 +92,7 @@ test("record the NEXORA demo", async ({ page }) => {
     // 3. Plain-English request → the agent asks instead of guessing
     scene("describe the job", 18);
     await say("Describe the job in plain English.");
-    await agentTurn(page, me, "Bill Acme Corp $800 for the landing page redesign, due in 14 days.");
+    await agentTurn(page, me, rec, "Bill Acme Corp $800 for the landing page redesign, due in 14 days.");
     await say("It doesn't know Acme's email, so it asks. NEXORA never guesses an address.");
     await hold(3400, true);
     await rec.shot("02-asks-for-email");
@@ -95,9 +100,10 @@ test("record the NEXORA demo", async ({ page }) => {
     // 4. Answer → invoice proposal
     scene("client email", 42);
     await say("Give it the client's email.");
-    await agentTurn(page, me, CLIENT_EMAIL);
+    await agentTurn(page, me, rec, CLIENT_EMAIL);
     const approve = page.getByRole("button", { name: "Approve & send via PayPal" });
     await expect(approve).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(CLIENT_EMAIL).last()).toBeVisible();
     await me.reveal(approve);
     await say("An invoice proposal to review. Nothing has reached PayPal yet.");
     await hold(3400, true);
@@ -108,8 +114,10 @@ test("record the NEXORA demo", async ({ page }) => {
     await me.click(page.getByRole("button", { name: "Edit" }));
     await say("Anything can be edited. Add 18% GST.");
     await me.replace(page.getByLabel("Tax name"), "GST");
+    await expect(page.getByLabel("Tax name")).toHaveValue("GST");
     await me.pause(350);
     await me.replace(page.getByLabel("Tax %"), "18");
+    await expect(page.getByLabel("Tax %")).toHaveValue("18");
     await me.pause(500);
     await me.click(page.getByRole("button", { name: "Save changes" }));
     await expect(page.getByText("$944.00").first()).toBeVisible({ timeout: 15_000 });
@@ -121,7 +129,8 @@ test("record the NEXORA demo", async ({ page }) => {
     scene("approve", 77);
     await say("Only my click sends it.");
     await me.click(approve, { dwellMs: 900 });
-    await expect(page.getByText("Invoice sent")).toBeVisible({ timeout: 90_000 });
+    await rec.segment("wait", () => expect(page.getByText("Invoice sent")).toBeVisible({ timeout: 90_000 }));
+    await expect(approve).toHaveCount(0);
     await me.reveal(page.getByRole("link", { name: "Track payment" }));
     await say(real ? "PayPal created and sent the invoice. INV2… is PayPal's own invoice ID." : "REHEARSAL: the mock PayPal created and sent the invoice.");
     await hold(3600, true);
@@ -132,10 +141,15 @@ test("record the NEXORA demo", async ({ page }) => {
     await me.click(page.getByRole("link", { name: "Track payment" }));
     const refresh = page.getByRole("button", { name: /Refresh status from PayPal/ });
     await expect(refresh).toBeVisible();
+    await expect(page).toHaveURL(/\/app\/invoices\/[^/]+$/);
     await say("Status comes straight from PayPal.");
     await hold(1400);
-    await me.click(refresh);
-    await me.pause(2400);
+    await rec.segment("optional", async () => {
+      const synced = page.waitForResponse((r) => r.url().endsWith("/sync") && r.request().method() === "POST", { timeout: 60_000 });
+      await me.click(refresh);
+      expect((await synced).status(), "status refresh failed").toBe(200);
+      await me.pause(1800);
+    });
     await rec.shot("05-invoice-detail");
 
     if (real) {
@@ -156,7 +170,7 @@ test("record the NEXORA demo", async ({ page }) => {
         }
         await rec.restart();
         await me.wake();
-        await me.pause(3000); // let PayPal's page finish drawing
+        await rec.segment("wait", () => me.pause(3000)); // let PayPal's page finish drawing
         await say("PayPal's own invoice page: the client pays by PayPal or card.");
         await hold(3800, true);
         await rec.shot("06-paypal-payer-view");
@@ -172,13 +186,13 @@ test("record the NEXORA demo", async ({ page }) => {
     await me.click(page.getByRole("button", { name: "Draft reminder with AI" }));
     await say("For a late payer, the AI drafts a polite reminder…");
     const sendReminder = page.getByRole("button", { name: "Approve & send reminder" });
-    await expect(sendReminder).toBeVisible({ timeout: 90_000 });
+    await rec.segment("wait", () => expect(sendReminder).toBeVisible({ timeout: 90_000 }));
     await me.reveal(sendReminder);
     await say("…and PayPal sends it only after I approve.");
     await hold(3000, true);
     await rec.shot("07-reminder-draft");
     await me.click(sendReminder, { dwellMs: 600 });
-    await expect(page.getByText("PayPal sent the reminder")).toBeVisible({ timeout: 90_000 });
+    await rec.segment("wait", () => expect(page.getByText("PayPal sent the reminder")).toBeVisible({ timeout: 90_000 }));
     await hold(2000);
 
     if (!real) {
@@ -192,6 +206,7 @@ test("record the NEXORA demo", async ({ page }) => {
     scene("analytics", 127);
     await me.click(page.getByRole("link", { name: "Analytics" }).first());
     await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
+    await expect(page).toHaveURL(/\/app\/analytics$/);
     await expect(page.locator(".ag-root")).toBeVisible({ timeout: 30_000 });
     await say("Analytics from my invoices. Sample rows are labeled Demo data.");
     await hold(3400, true);
@@ -201,7 +216,7 @@ test("record the NEXORA demo", async ({ page }) => {
     const insights = page.waitForResponse((r) => r.url().endsWith("/api/insights"), { timeout: 120_000 });
     await me.click(explain);
     await say("The AI explains my receivables…");
-    const insightsRes = await insights;
+    const insightsRes = await rec.segment("wait", () => insights);
     if (insightsRes.status() !== 200) problems.push(`AI insights returned HTTP ${insightsRes.status()}: ${(await insightsRes.text()).slice(0, 300)}`);
     else if (!(((await insightsRes.json()) as { insights?: unknown[] }).insights ?? []).length) problems.push("AI insights returned no verified insight");
     await me.pause(700);
@@ -216,11 +231,17 @@ test("record the NEXORA demo", async ({ page }) => {
     const search = page.locator("#grid-q");
     await me.reveal(search);
     await say("Every invoice in AG Grid: search, sort and filter.");
+    const rows = page.locator(".ag-center-cols-container .ag-row");
     await me.type(search, "Lumen");
+    await expect(search).toHaveValue("Lumen");
+    await expect(rows.first()).toContainText("Lumen");
     await hold(1800);
     await me.replace(search, "");
+    await expect(search).toHaveValue("");
     await me.pause(500);
-    await me.click(page.locator(".ag-header-cell", { hasText: "Outstanding" }));
+    const outstanding = page.locator(".ag-header-cell", { hasText: "Outstanding" });
+    await me.click(outstanding);
+    await expect(outstanding).toHaveAttribute("aria-sort", /ascending|descending/);
     await hold(2000);
     await rec.shot("10-ag-grid");
 
@@ -228,6 +249,7 @@ test("record the NEXORA demo", async ({ page }) => {
     scene("activity log", 160);
     await me.click(page.getByRole("link", { name: "Activity log" }).first());
     await expect(page.getByText("PayPal created the draft invoice").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page).toHaveURL(/\/app\/activity$/);
     await say("Every AI proposal, approval and PayPal call is logged with PayPal's debug ID.");
     await hold(3600, true);
     await rec.shot("11-activity-log");
@@ -237,7 +259,7 @@ test("record the NEXORA demo", async ({ page }) => {
   } finally {
     // Always write frames.json, so a failed run still produces a partial video to inspect.
     const r = await rec.stop();
-    console.log(`[demo] mode=${MODE} frames=${r.frames} ~${r.seconds}s`);
+    console.log(`[demo] mode=${MODE} capture=${CAPTURE ? "on" : "off (rehearsal, no video)"} frames=${r.frames} ~${r.seconds}s`);
   }
   if (problems.length) {
     console.warn(`[demo] live-step problems:\n- ${problems.join("\n- ")}`);
