@@ -230,10 +230,11 @@ test("record the NEXORA demo", async ({ page }) => {
     const search = page.locator("#grid-q");
     await me.reveal(search);
     await say("Every invoice in AG Grid: search, sort and filter.");
-    const rows = page.locator(".ag-center-cols-container .ag-row");
+    const rowWith = (text: string) => page.locator(".ag-root [role=row]", { hasText: text });
     await me.type(search, "Lumen");
     await expect(search).toHaveValue("Lumen");
-    await expect(rows.first()).toContainText("Lumen");
+    await expect(rowWith("Lumen").first()).toBeVisible();
+    await expect(rowWith("Northwind")).toHaveCount(0); // the filter really narrowed the grid
     await hold(1800);
     await me.replace(search, "");
     await expect(search).toHaveValue("");
