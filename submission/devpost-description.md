@@ -18,16 +18,18 @@ You type: *"Bill Acme Corp $800 for the landing page redesign, due in 14 days."*
 - **Agent with typed tools** (`draft_invoice`, `find_client`, `list_invoices`, `get_invoice_status`, `summarize_receivables`, `draft_reminder`), every argument and output validated with zod.
 - **Approval gating by construction:** write tools only create `pending_approval` proposals. The one PayPal write path is a separate endpoint behind the user's click, with an atomic compare-and-set so double clicks execute once, plus a deterministic PayPal invoice number per proposal, so a retry after a lost response finds the existing invoice instead of creating a duplicate.
 - **Server-side anti-hallucination:** an email is accepted only if the user typed it or it belongs to a saved client.
-- **Provider-agnostic AI:** FreeLLMAPI (an OpenAI-compatible router over free model tiers) by default, Google Gemini via `@google/genai` as an alternative.
+- **Google Gemini** (`gemini-3.5-flash-lite` via `@google/genai`) behind a provider-agnostic interface; an OpenAI-compatible router (FreeLLMAPI) also works for local runs.
 - **Money done right:** integer minor units in the database, exact decimal strings for PayPal, zero-decimal currencies (JPY, HUF, TWD) handled, configurable tax.
 - **Audit log** of every AI proposal, approval and PayPal call with HTTP status and PayPal debug ID, with secrets redacted.
-- Next.js 15, TypeScript strict, SQLite, AG Grid Community, Recharts, Tailwind. 33 unit/integration tests, Playwright E2E, and an opt-in test against the real Sandbox.
+- **Built for traffic spikes:** a process-wide AI traffic gate (concurrency cap, queue, pacing to the model quota, cooldown after 429s) so overload returns "try again in N seconds" instead of errors; cached insights; timeouts and retries; error boundaries; a health check and uptime monitor. Load-tested at 300 concurrent users: 50,090 requests in 3 minutes, 0% errors, p95 read latency 621 ms.
+- Next.js 15, TypeScript strict, SQLite, AG Grid Community, Recharts, Tailwind. 60 unit/integration tests, Playwright E2E, an opt-in test against the real Sandbox, and CI on every push.
 
 ## Challenges
 
 - Making an LLM agent **safe to connect to a payments API**: we moved every safety rule (approval, email provenance, validation, idempotency) out of the prompt and into server code the model can't bypass.
 - Getting money right across 25 currencies without floats.
 - Keeping AI insights honest: computing facts deterministically first, then forcing the model to cite them.
+- Staying up when everyone clicks at once: the free AI tier allows 15 requests a minute, so the server queues and paces model calls itself instead of letting users hit the provider's limit.
 
 ## Accomplishments
 
