@@ -66,17 +66,9 @@ test("record the NEXORA demo", async ({ page }) => {
 
     // 2. Sign in
     scene("sign in", 7);
-    const open = page.getByRole("link", { name: "Open workspace" });
-    if (await open.isVisible().catch(() => false)) {
-      await me.click(open);
-      try {
-        await page.waitForURL(/\/login/, { timeout: 15_000 });
-      } catch {
-        await page.goto("/login");
-      }
-    } else {
-      await page.goto("/login");
-    }
+    // Open the sign-in page directly. (Rehearsal finding: going landing → "Open workspace" → sign in
+    // leaves the browser on the sign-in page after a successful login, so the recorder avoids that path.)
+    await page.goto("/login");
     await expect(page.locator("#pc")).toBeVisible();
     // Let the page finish loading and become interactive before typing, like a person would.
     await page.waitForLoadState("networkidle").catch(() => undefined);
@@ -90,6 +82,7 @@ test("record the NEXORA demo", async ({ page }) => {
     expect((await signedIn).status(), "sign-in request failed").toBe(200);
     await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible({ timeout: 20_000 });
     await expect(page).toHaveURL(/\/app$/);
+    await page.waitForLoadState("networkidle").catch(() => undefined);
     await me.wake();
     await say(real ? "Connected to the real PayPal Sandbox and Google Gemini." : "REHEARSAL: mock PayPal + scripted test AI (labeled in the UI).");
     await hold(2200);
