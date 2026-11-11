@@ -15,6 +15,8 @@ const PASSCODE = process.env.DEMO_PASSCODE ?? "demo-passcode";
 const CLIENT_EMAIL = process.env.SANDBOX_BUYER_EMAIL || "ap@acme-corp.example";
 const OUT = process.env.DEMO_OUT ?? "demo-output";
 const real = MODE === "sandbox";
+/** Live steps that didn't work. In sandbox mode any of these fails the run (the partial video is still encoded). */
+const problems: string[] = [];
 
 test.setTimeout(10 * 60_000);
 
@@ -106,6 +108,7 @@ test("record the NEXORA demo", async ({ page }) => {
     if (real) {
       const payer = page.getByRole("link", { name: /Open payer view in PayPal Sandbox/ });
       const href = await payer.getAttribute("href");
+      if (!href) problems.push("No PayPal payer-view link on the invoice");
       if (href) {
         const back = page.url();
         await payer.hover();
@@ -151,7 +154,8 @@ test("record the NEXORA demo", async ({ page }) => {
     await explain.click();
     await say("The AI explains my receivables…", 0);
     const insightsRes = await insights;
-    if (insightsRes.status() !== 200) console.warn(`[demo] insights returned ${insightsRes.status()}: ${await insightsRes.text()}`);
+    if (insightsRes.status() !== 200) problems.push(`AI insights returned HTTP ${insightsRes.status()}: ${(await insightsRes.text()).slice(0, 300)}`);
+    else if (!(((await insightsRes.json()) as { insights?: unknown[] }).insights ?? []).length) problems.push("AI insights returned no verified insight");
     await page.waitForTimeout(900);
     await say("…and every insight lists the exact figures it used. Any insight quoting a number that isn't in my data is thrown away.", 5200);
     await rec.shot("09-ai-insights");
@@ -180,5 +184,9 @@ test("record the NEXORA demo", async ({ page }) => {
     // Always write frames.json, so a failed run still produces a partial video to inspect.
     const r = await rec.stop();
     console.log(`[demo] mode=${MODE} frames=${r.frames} ~${r.seconds}s`);
+  }
+  if (problems.length) {
+    console.warn(`[demo] live-step problems:\n- ${problems.join("\n- ")}`);
+    if (real) throw new Error(`Recording is not submission-ready: ${problems.join("; ")}`);
   }
 });

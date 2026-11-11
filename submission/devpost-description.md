@@ -21,7 +21,7 @@ You type: *"Bill Acme Corp $800 for the landing page redesign, due in 14 days."*
 - **Google Gemini** (`gemini-3.5-flash-lite` via `@google/genai`) behind a provider-agnostic interface; an OpenAI-compatible router (FreeLLMAPI) also works for local runs.
 - **Money done right:** integer minor units in the database, exact decimal strings for PayPal, zero-decimal currencies (JPY, HUF, TWD) handled, configurable tax.
 - **Audit log** of every AI proposal, approval and PayPal call with HTTP status and PayPal debug ID, with secrets redacted.
-- **Built for traffic spikes:** a process-wide AI traffic gate (concurrency cap, queue, pacing to the model quota, cooldown after 429s) so overload returns "try again in N seconds" instead of errors; cached insights; timeouts and retries; error boundaries; a health check and uptime monitor. Load-tested at 300 concurrent users: 50,090 requests in 3 minutes, 0% errors, p95 read latency 621 ms.
+- **Built for traffic spikes:** a process-wide AI traffic gate (concurrency cap, queue, pacing to the model quota, cooldown after 429s) so overload returns "try again in N seconds" instead of errors; cached insights; timeouts and retries; error boundaries; a health check and uptime monitor. Load-tested with k6 at 300 concurrent virtual users (mock PayPal and simulated AI, so it measures NEXORA's own server, not Gemini or PayPal capacity): 50,090 requests in 3 minutes, 0% errors, p95 read latency 621 ms, and every AI request beyond the quota got a polite "try again".
 - Next.js 15, TypeScript strict, SQLite, AG Grid Community, Recharts, Tailwind. 60 unit/integration tests, Playwright E2E, an opt-in test against the real Sandbox, and CI on every push.
 
 ## Challenges
