@@ -180,7 +180,8 @@ One agent turn uses 1–3 model requests. For demos and judging use **`gemini-3.
 npm test               # Vitest: money, schemas, AI parsing, PayPal client (mocked HTTP), idempotency, approval gating
 npm run test:e2e       # Playwright: full flow against a production build (mock PayPal + scripted provider)
 npm run test:sandbox   # opt-in: real PayPal Sandbox create → send → get → remind → cancel
-npm run check:paypal   # read-only: OAuth token + list invoices (creates nothing)
+npm run check:paypal   # read-only: OAuth token + list invoices (creates nothing); exits non-zero unless PayPal is ready
+npm run check:gemini   # read-only: key accepted + model available (generates nothing); exits non-zero unless Gemini is ready
 NEXORA_URL=http://localhost:3000 NEXORA_PASSCODE=... npm run check:live-agent  # real AI, 12 checks
 NEXORA_URL=http://localhost:3000 NEXORA_PASSCODE=... npm run check:ui-live     # real AI in Chromium + screenshots
 npm run lint && npm run build

@@ -33,6 +33,8 @@ jobs:
       PAYPAL_CLIENT_SECRET: ${{ !inputs.dry_run && secrets.PAYPAL_CLIENT_SECRET || '' }}
       GEMINI_API_KEY: ${{ !inputs.dry_run && secrets.GEMINI_API_KEY || '' }}
       SANDBOX_BUYER_EMAIL: ${{ !inputs.dry_run && (secrets.SANDBOX_BUYER_EMAIL || vars.SANDBOX_BUYER_EMAIL) || '' }}
+      # The model the recording uses. The Gemini key check verifies this same name.
+      AI_MODEL: gemini-3.5-flash-lite
     steps:
       - name: Which settings can this run see? (yes/no only, never values)
         run: |
@@ -52,12 +54,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # Fail in the first minute, with a clear reason, if the keys don't work. Both checks are
-      # read-only (they create nothing, send nothing and print no credentials).
-      - name: PayPal Sandbox key check (read-only)
+      # Stop in the first minute, with a clear reason, unless readiness is established. Both checks
+      # are read-only (they create nothing, send nothing and print no credentials) and exit non-zero
+      # when a key is rejected, the provider can't be reached or times out, the answer is
+      # unexpected, or the model isn't available. They don't prove generation or invoicing work.
+      - name: PayPal Sandbox key check (read-only, OAuth + Invoicing access)
         if: ${{ env.DEMO_MODE == 'sandbox' }}
         run: node scripts/check-paypal.mjs
-      - name: Gemini key check (read-only)
+      - name: Gemini key check (read-only, key + model availability)
         if: ${{ env.DEMO_MODE == 'sandbox' }}
         run: node scripts/check-gemini.mjs
       - run: npm ci

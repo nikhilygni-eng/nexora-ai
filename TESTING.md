@@ -65,6 +65,7 @@ No real PayPal operation has been performed yet. Nothing in this file treats moc
 | Sign-in from the landing page (both buttons) reaches the Command Center and stays signed in after a refresh; sign-in returns to the page that asked for it; `next` can't leave the site | 🧪 | `tests/e2e/sign-in-flow.spec.ts` |
 | AI traffic gate: concurrency cap, FIFO, queue-full and wait-budget shedding, RPM pacing, 429 cooldown, daily-quota fail-fast, abort while queued, 503 + Retry-After mapping | 🧪 | `tests/unit/ai-gate.test.ts` |
 | Insight cache (single-flight, TTL, no error caching, eviction) and rate-limiter key sweep | 🧪 | `tests/unit/cache.test.ts` |
+| Key checks that gate a Sandbox recording (`check:paypal`, `check:gemini`): stop on a rejected key, a mismatched PayPal ID/Secret pair, an unreachable provider, a timeout, an unexpected status, an unreadable answer or an unavailable model; never print a credential. Simulated answers plus a local server that never replies. They do not prove Gemini generation or PayPal invoicing | 🧪 | `tests/unit/key-checks.test.ts` |
 | Load: production build under concurrent virtual users (mock PayPal, scripted AI with 2 s latency) | 🧪 | `loadtest/nexora-k6.js`, CI job `loadtest` (results in the run's `loadtest-results` artifact) |
 
 ## Load test result (CI, 2026-11-11)
