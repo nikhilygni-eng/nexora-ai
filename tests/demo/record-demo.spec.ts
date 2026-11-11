@@ -66,9 +66,9 @@ test("record the NEXORA demo", async ({ page }) => {
 
     // 2. Sign in
     scene("sign in", 7);
-    // Open the sign-in page directly. (Rehearsal finding: going landing → "Open workspace" → sign in
-    // leaves the browser on the sign-in page after a successful login, so the recorder avoids that path.)
-    await page.goto("/login");
+    // The visitor's normal way in: the landing page's "Open workspace" button leads to sign-in.
+    await me.click(page.getByRole("link", { name: "Open workspace" }));
+    await expect(page).toHaveURL(/\/login\?next=%2Fapp$/);
     await expect(page.locator("#pc")).toBeVisible();
     // Let the page finish loading and become interactive before typing, like a person would.
     await page.waitForLoadState("networkidle").catch(() => undefined);
