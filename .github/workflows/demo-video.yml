@@ -46,7 +46,8 @@ jobs:
       - name: Record (${{ env.DEMO_MODE }})
         run: npx playwright test -c playwright.demo.config.ts
       - name: Encode MP4
-        run: node scripts/encode-demo.mjs demo-output
+        if: always()
+        run: test -f demo-output/frames.json && node scripts/encode-demo.mjs demo-output
       - name: Publish to the demo-output branch
         if: always()
         env:
