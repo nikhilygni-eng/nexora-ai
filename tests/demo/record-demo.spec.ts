@@ -78,12 +78,17 @@ test("record the NEXORA demo", async ({ page }) => {
       await page.goto("/login");
     }
     await expect(page.locator("#pc")).toBeVisible();
+    // Let the page finish loading and become interactive before typing, like a person would.
+    await page.waitForLoadState("networkidle").catch(() => undefined);
     await me.wake();
     await say("Sign in to the workspace.");
     await me.type(page.locator("#pc"), PASSCODE);
+    await expect(page.locator("#pc"), "passcode field didn't keep what was typed").toHaveValue(PASSCODE);
     await me.pause(450);
+    const signedIn = page.waitForResponse((r) => r.url().endsWith("/api/auth/login"), { timeout: 30_000 });
     await me.click(page.locator("button[type=submit]"));
-    await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
+    expect((await signedIn).status(), "sign-in request failed").toBe(200);
+    await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible({ timeout: 20_000 });
     await expect(page).toHaveURL(/\/app$/);
     await me.wake();
     await say(real ? "Connected to the real PayPal Sandbox and Google Gemini." : "REHEARSAL: mock PayPal + scripted test AI (labeled in the UI).");
@@ -175,6 +180,7 @@ test("record the NEXORA demo", async ({ page }) => {
         await hold(3800, true);
         await rec.shot("06-paypal-payer-view");
         await page.goto(back);
+        await page.waitForLoadState("networkidle").catch(() => undefined);
         await rec.restart();
         await expect(refresh).toBeVisible();
         await me.wake();
@@ -256,6 +262,11 @@ test("record the NEXORA demo", async ({ page }) => {
     await say("NEXORA AI: say who owes you, approve, and PayPal does the rest.");
     await hold(3000);
     scene("end", 172);
+  } catch (e) {
+    // Where were we? (URL and visible headings only; never page data.)
+    const headings = await page.locator("h1, h2").allTextContents().catch(() => []);
+    console.error(`[demo] FAILED at ${elapsed().toFixed(1)}s on ${page.url()} | headings: ${headings.slice(0, 5).join(" / ")}`);
+    throw e;
   } finally {
     // Always write frames.json, so a failed run still produces a partial video to inspect.
     const r = await rec.stop();
