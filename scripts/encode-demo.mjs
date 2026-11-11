@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const dir = path.resolve(process.argv[2] ?? "demo-output");
-const maxSec = Number(process.env.MAX_SEC ?? 175);
+const maxSec = Number(process.env.MAX_SEC ?? 178);
 const W = 1920;
 const PAGE_H = 972;
 const BAND_H = 108;
@@ -90,6 +90,7 @@ fs.writeFileSync(path.join(dir, "filters.txt"), filters.join(",\n"));
 const tmp = "nexora-demo.partial.mp4";
 const out = "nexora-demo.mp4";
 const args = ["-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-filter_script:v", "filters.txt", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", tmp];
+if (speed > 1) console.warn(`[encode] WARNING: recording is ${total.toFixed(1)} s, over ${maxSec} s; playback sped up ×${speed.toFixed(3)} (not 1×)`);
 console.log(`[encode] ${frames.length} frames, ${caps.length} captions, ${total.toFixed(1)} s recorded, speed ×${speed.toFixed(2)}`);
 const r = spawnSync("ffmpeg", args, { stdio: "inherit", cwd: dir });
 if (r.status !== 0) process.exit(r.status ?? 1);

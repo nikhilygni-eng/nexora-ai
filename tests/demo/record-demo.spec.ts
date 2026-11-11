@@ -1,14 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
-import { OVERLAY_SCRIPT, startRecording } from "./screencast";
+import { CURSOR_SCRIPT, Human } from "./human";
+import { startRecording } from "./screencast";
 
 /**
- * Records the Devpost demo video: the full NEXORA loop in a real browser, with captions.
+ * Records the Devpost demo video: the full NEXORA loop in a real browser, driven like a person
+ * would use it (see ./human.ts), with captions in a band below the app.
  *
  *   DEMO_MODE=sandbox → real PayPal Sandbox + real Gemini (needs PAYPAL_CLIENT_ID/SECRET, GEMINI_API_KEY,
  *                       SANDBOX_BUYER_EMAIL). This is the one to submit.
  *   DEMO_MODE=mock    → mock PayPal + scripted AI, for rehearsing the script. Captions say so; don't submit it.
  *
- * Run: npm run demo:record   (see .github/workflows/demo-video.yml)
+ * Everything plays at 1×. The script aims for about 2:50; when live responses run slow, later
+ * reading pauses shorten (never below 2 s for key results) instead of speeding the video up.
  */
 const MODE = process.env.DEMO_MODE === "sandbox" ? "sandbox" : "mock";
 const PASSCODE = process.env.DEMO_PASSCODE ?? "demo-passcode";
@@ -20,166 +23,217 @@ const problems: string[] = [];
 
 test.setTimeout(10 * 60_000);
 
-async function agentTurn(page: Page, text: string) {
-  const composer = page.locator("#composer");
-  await composer.click();
-  await composer.pressSequentially(text, { delay: 26 });
+async function agentTurn(page: Page, me: Human, text: string) {
+  await me.type(page.locator("#composer"), text);
+  await me.pause(650); // a beat before sending
   const done = page.waitForResponse((r) => r.url().endsWith("/api/agent") && r.request().method() === "POST", { timeout: 120_000 });
   await page.keyboard.press("Enter");
   const res = await done;
   expect(res.status(), `agent turn failed: ${await res.text()}`).toBe(200);
-  await page.waitForTimeout(700);
+  await me.pause(500);
 }
 
 test("record the NEXORA demo", async ({ page }) => {
-  await page.addInitScript(OVERLAY_SCRIPT);
+  await page.addInitScript(CURSOR_SCRIPT);
   await page.goto("/");
   const rec = await startRecording(page, OUT);
-  const say = async (text: string, holdMs = 3000) => {
-    await rec.caption(text);
-    if (holdMs) await page.waitForTimeout(holdMs);
+  const me = new Human(page);
+  const t0 = Date.now();
+  const elapsed = () => (Date.now() - t0) / 1000;
+  let behind = false;
+  /** Start of a scene: log the real time, and note whether we're running late against the plan. */
+  const scene = (name: string, plannedStartSec: number) => {
+    behind = elapsed() > plannedStartSec + 5;
+    console.log(`[demo] ${elapsed().toFixed(1)}s (planned ${plannedStartSec}s)${behind ? " LATE" : ""}  ${name}`);
   };
-  await page.mouse.move(960, 540);
+  const say = (text: string) => rec.caption(text);
+  /** Reading time. Key results always get at least 2 s. */
+  const hold = (ms: number, key = false) => me.pause(Math.max(key ? 2000 : 700, behind ? ms * 0.6 : ms));
+
   try {
     // 1. Hook
-    await say("Freelancers lose hours to invoicing and chasing late payments.", 3200);
-    await say("NEXORA AI turns one sentence into a real PayPal invoice, and never sends anything without your approval.", 4200);
+    scene("landing", 0);
+    await me.wake();
+    await say("Invoicing and chasing payments eat a freelancer's week.");
+    await hold(2800);
+    await say("NEXORA AI turns one sentence into a real PayPal invoice. Nothing is sent without your approval.");
+    await hold(3600, true);
     await rec.shot("01-landing");
 
     // 2. Sign in
-    await page.goto("/login");
-    await say("", 0);
-    await page.locator("#pc").click();
-    await page.locator("#pc").pressSequentially(PASSCODE, { delay: 45 });
-    await page.click("button[type=submit]");
+    scene("sign in", 7);
+    const open = page.getByRole("link", { name: "Open workspace" });
+    if (await open.isVisible().catch(() => false)) {
+      await me.click(open);
+      try {
+        await page.waitForURL(/\/login/, { timeout: 15_000 });
+      } catch {
+        await page.goto("/login");
+      }
+    } else {
+      await page.goto("/login");
+    }
+    await expect(page.locator("#pc")).toBeVisible();
+    await me.wake();
+    await say("Sign in to the workspace.");
+    await me.type(page.locator("#pc"), PASSCODE);
+    await me.pause(450);
+    await me.click(page.locator("button[type=submit]"));
     await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
-    await say(real ? "Connected to the real PayPal Sandbox and Google Gemini." : "REHEARSAL: mock PayPal + scripted test AI (labeled in the UI).", 2600);
+    await me.wake();
+    await say(real ? "Connected to the real PayPal Sandbox and Google Gemini." : "REHEARSAL: mock PayPal + scripted test AI (labeled in the UI).");
+    await hold(2200);
 
     // 3. Plain-English request → the agent asks instead of guessing
-    await say("I just say who to bill, in plain English.", 0);
-    await agentTurn(page, "Bill Acme Corp $800 for the landing page redesign, due in 14 days.");
-    await say("The agent pulled out the client, amount and due date, but it doesn't know Acme's email. So it asks.", 4200);
-    await say("NEXORA never guesses an email: the server rejects any address I didn't give it.", 3600);
+    scene("describe the job", 18);
+    await say("Describe the job in plain English.");
+    await agentTurn(page, me, "Bill Acme Corp $800 for the landing page redesign, due in 14 days.");
+    await say("It doesn't know Acme's email, so it asks. NEXORA never guesses an address.");
+    await hold(3400, true);
     await rec.shot("02-asks-for-email");
 
-    // 4. Answer → invoice slip
-    await say("I give it the client's email.", 0);
-    await agentTurn(page, CLIENT_EMAIL);
+    // 4. Answer → invoice proposal
+    scene("client email", 42);
+    await say("Give it the client's email.");
+    await agentTurn(page, me, CLIENT_EMAIL);
     const approve = page.getByRole("button", { name: "Approve & send via PayPal" });
     await expect(approve).toBeVisible({ timeout: 60_000 });
-    await approve.scrollIntoViewIfNeeded();
-    await say("Here's the invoice slip for review. Nothing has touched PayPal yet.", 3600);
+    await me.reveal(approve);
+    await say("An invoice proposal to review. Nothing has reached PayPal yet.");
+    await hold(3400, true);
     await rec.shot("03-invoice-slip");
 
     // 5. Edit: add tax; totals recompute on the server
-    await page.getByRole("button", { name: "Edit" }).click();
-    await say("I can edit anything. Let's add 18% GST.", 0);
-    await page.getByLabel("Tax name").fill("");
-    await page.getByLabel("Tax name").pressSequentially("GST", { delay: 60 });
-    await page.getByLabel("Tax %").fill("");
-    await page.getByLabel("Tax %").pressSequentially("18", { delay: 90 });
-    await page.getByRole("button", { name: "Save changes" }).click();
+    scene("edit tax", 60);
+    await me.click(page.getByRole("button", { name: "Edit" }));
+    await say("Anything can be edited. Add 18% GST.");
+    await me.replace(page.getByLabel("Tax name"), "GST");
+    await me.pause(350);
+    await me.replace(page.getByLabel("Tax %"), "18");
+    await me.pause(500);
+    await me.click(page.getByRole("button", { name: "Save changes" }));
     await expect(page.getByText("$944.00").first()).toBeVisible({ timeout: 15_000 });
-    await say("Totals are recomputed on the server in exact minor units: $800 + 18% = $944.00.", 3400);
+    await me.reveal(approve);
+    await say("The server recalculates: $800 + 18% GST = $944.00.");
+    await hold(3200, true);
 
     // 6. Approve → PayPal
-    await approve.scrollIntoViewIfNeeded();
-    await approve.hover();
-    await say("Only my click sends it.", 1500);
-    await approve.click();
+    scene("approve", 77);
+    await say("Only my click sends it.");
+    await me.click(approve, { dwellMs: 900 });
     await expect(page.getByText("Invoice sent")).toBeVisible({ timeout: 90_000 });
-    await say(
-      real
-        ? "The server created and sent the invoice with the PayPal Invoicing API. That INV2 number is PayPal's own invoice ID."
-        : "REHEARSAL: the mock PayPal created and sent the invoice.",
-      4400,
-    );
+    await me.reveal(page.getByRole("link", { name: "Track payment" }));
+    await say(real ? "PayPal created and sent the invoice. INV2… is PayPal's own invoice ID." : "REHEARSAL: the mock PayPal created and sent the invoice.");
+    await hold(3600, true);
     await rec.shot("04-sent-via-paypal");
 
     // 7. Track payment: status straight from PayPal
-    await page.getByRole("link", { name: "Track payment" }).click();
+    scene("track payment", 89);
+    await me.click(page.getByRole("link", { name: "Track payment" }));
     const refresh = page.getByRole("button", { name: /Refresh status from PayPal/ });
     await expect(refresh).toBeVisible();
-    await say("Each invoice tracks its real status from PayPal.", 0);
-    await refresh.click();
-    await page.waitForTimeout(2600);
+    await say("Status comes straight from PayPal.");
+    await hold(1400);
+    await me.click(refresh);
+    await me.pause(2400);
     await rec.shot("05-invoice-detail");
 
     if (real) {
+      scene("PayPal payer page", 97);
       const payer = page.getByRole("link", { name: /Open payer view in PayPal Sandbox/ });
       const href = await payer.getAttribute("href");
       if (!href) problems.push("No PayPal payer-view link on the invoice");
       if (href) {
         const back = page.url();
-        await payer.hover();
-        await say("This is what the client receives from PayPal.", 1200);
-        await page.goto(href, { waitUntil: "domcontentloaded" });
+        // Recording only: follow the link in this tab (it normally opens a new one) so the click is visible.
+        await payer.evaluate((el) => el.removeAttribute("target"));
+        await say("This is what the client receives from PayPal.");
+        await me.click(payer, { dwellMs: 700 });
+        try {
+          await page.waitForURL((u) => !u.hostname.includes("localhost"), { timeout: 30_000, waitUntil: "domcontentloaded" });
+        } catch {
+          await page.goto(href, { waitUntil: "domcontentloaded" });
+        }
         await rec.restart();
-        await page.waitForTimeout(3500);
-        await say("The client's PayPal Sandbox invoice: pay by PayPal or card, straight to the freelancer.", 4500);
+        await me.wake();
+        await me.pause(3000); // let PayPal's page finish drawing
+        await say("PayPal's own invoice page: the client pays by PayPal or card.");
+        await hold(3800, true);
         await rec.shot("06-paypal-payer-view");
         await page.goto(back);
         await rec.restart();
         await expect(refresh).toBeVisible();
+        await me.wake();
       }
     }
 
     // 8. AI reminder, approval-gated
-    await page.getByRole("button", { name: "Draft reminder with AI" }).click();
-    await say("If the client is late, the AI drafts a polite reminder…", 0);
+    scene("reminder", 112);
+    await me.click(page.getByRole("button", { name: "Draft reminder with AI" }));
+    await say("For a late payer, the AI drafts a polite reminder…");
     const sendReminder = page.getByRole("button", { name: "Approve & send reminder" });
     await expect(sendReminder).toBeVisible({ timeout: 90_000 });
-    await sendReminder.scrollIntoViewIfNeeded();
-    await say("…and PayPal sends it only after I approve.", 3200);
+    await me.reveal(sendReminder);
+    await say("…and PayPal sends it only after I approve.");
+    await hold(3000, true);
     await rec.shot("07-reminder-draft");
-    await sendReminder.click();
+    await me.click(sendReminder, { dwellMs: 600 });
     await expect(page.getByText("PayPal sent the reminder")).toBeVisible({ timeout: 90_000 });
-    await page.waitForTimeout(1600);
+    await hold(2000);
 
     if (!real) {
-      await page.getByRole("button", { name: "Simulate payment (mock only)" }).click();
+      await me.click(page.getByRole("button", { name: "Simulate payment (mock only)" }));
       await expect(page.getByText("PAID", { exact: true })).toBeVisible();
-      await say("REHEARSAL: simulated payment, synced back as Paid.", 2400);
+      await say("REHEARSAL: simulated payment, synced back as Paid.");
+      await hold(2200);
     }
 
-    // 9. Analytics + grounded AI insights + AG Grid
-    await page.getByRole("link", { name: "Analytics" }).first().click();
+    // 9. Analytics + grounded AI insights
+    scene("analytics", 127);
+    await me.click(page.getByRole("link", { name: "Analytics" }).first());
     await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
     await expect(page.locator(".ag-root")).toBeVisible({ timeout: 30_000 });
-    await say("Analytics: outstanding, overdue, aging and days-to-pay. Sample rows are clearly labeled Demo data.", 4400);
+    await say("Analytics from my invoices. Sample rows are labeled Demo data.");
+    await hold(3400, true);
     await rec.shot("08-analytics");
     const explain = page.getByRole("button", { name: "Explain my receivables" });
-    await explain.scrollIntoViewIfNeeded();
+    await me.reveal(explain);
     const insights = page.waitForResponse((r) => r.url().endsWith("/api/insights"), { timeout: 120_000 });
-    await explain.click();
-    await say("The AI explains my receivables…", 0);
+    await me.click(explain);
+    await say("The AI explains my receivables…");
     const insightsRes = await insights;
     if (insightsRes.status() !== 200) problems.push(`AI insights returned HTTP ${insightsRes.status()}: ${(await insightsRes.text()).slice(0, 300)}`);
     else if (!(((await insightsRes.json()) as { insights?: unknown[] }).insights ?? []).length) problems.push("AI insights returned no verified insight");
-    await page.waitForTimeout(900);
-    await say("…and every insight lists the exact figures it used. Any insight quoting a number that isn't in my data is thrown away.", 5200);
+    await me.pause(700);
+    const basedOn = page.getByText(/Based on \d+ figure/).first();
+    if (await basedOn.isVisible().catch(() => false)) await me.reveal(basedOn);
+    await say("…and each insight cites the exact figures it used.");
+    await hold(4000, true);
     await rec.shot("09-ai-insights");
 
-    const grid = page.locator(".ag-root");
-    await grid.scrollIntoViewIfNeeded();
-    await say("Every invoice in AG Grid: search, sort and filter.", 0);
-    await page.locator("#grid-q").click();
-    await page.locator("#grid-q").pressSequentially("Lumen", { delay: 80 });
-    await page.waitForTimeout(1600);
-    await page.locator("#grid-q").fill("");
-    await page.locator(".ag-header-cell", { hasText: "Outstanding" }).click();
-    await page.waitForTimeout(1800);
+    // 10. AG Grid
+    scene("grid", 147);
+    const search = page.locator("#grid-q");
+    await me.reveal(search);
+    await say("Every invoice in AG Grid: search, sort and filter.");
+    await me.type(search, "Lumen");
+    await hold(1800);
+    await me.replace(search, "");
+    await me.pause(500);
+    await me.click(page.locator(".ag-header-cell", { hasText: "Outstanding" }));
+    await hold(2000);
     await rec.shot("10-ag-grid");
 
-    // 10. Audit trail
-    await page.getByRole("link", { name: "Activity log" }).first().click();
+    // 11. Audit trail and close
+    scene("activity log", 160);
+    await me.click(page.getByRole("link", { name: "Activity log" }).first());
     await expect(page.getByText("PayPal created the draft invoice").first()).toBeVisible({ timeout: 30_000 });
-    await say("Every AI proposal, every approval and every PayPal call is logged, with PayPal's debug ID.", 4200);
+    await say("Every AI proposal, approval and PayPal call is logged with PayPal's debug ID.");
+    await hold(3600, true);
     await rec.shot("11-activity-log");
-
-    // 11. Close
-    await page.goto("/");
-    await say("NEXORA AI: say who owes you. Approve the invoice. PayPal does the rest.", 4200);
+    await say("NEXORA AI: say who owes you, approve, and PayPal does the rest.");
+    await hold(3000);
+    scene("end", 172);
   } finally {
     // Always write frames.json, so a failed run still produces a partial video to inspect.
     const r = await rec.stop();

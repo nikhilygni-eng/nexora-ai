@@ -5,14 +5,8 @@ name: Demo video
 #   With repo secrets PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, GEMINI_API_KEY, SANDBOX_BUYER_EMAIL
 #   → real PayPal Sandbox + real Gemini (the version to submit).
 #   Without them → mock rehearsal (captions and UI say so; don't submit it).
+# Manual start only (or by the secrets watcher), so pushing recorder changes never launches a recording.
 on:
-  push:
-    branches-ignore: ["demo-output"]
-    paths:
-      - "tests/demo/**"
-      - "playwright.demo.config.ts"
-      - "scripts/encode-demo.mjs"
-      - ".github/workflows/demo-video.yml"
   workflow_dispatch:
 
 permissions:

@@ -61,22 +61,3 @@ export async function startRecording(page: Page, outDir: string, size = { width:
     },
   };
 }
-
-/** Injected into every page of the recording: a visible cursor (screen recordings don't show the real one). */
-export const OVERLAY_SCRIPT = `(() => {
-  const css = \`
-    #nx-demo-cursor{position:fixed;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;
-      border:2.5px solid #2442c9;background:rgba(36,66,201,.16);z-index:2147483647;pointer-events:none;
-      transition:transform .09s linear, background .15s;opacity:0}
-    #nx-demo-cursor[data-on="1"]{opacity:1}
-    #nx-demo-cursor[data-down="1"]{background:rgba(36,66,201,.45)}
-  \`;
-  function ensure(){
-    if (!document.body || document.getElementById('nx-demo-cursor')) return;
-    const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
-    const cur = document.createElement('div'); cur.id = 'nx-demo-cursor'; document.body.appendChild(cur);
-    document.addEventListener('mousemove', (e) => { cur.style.transform = 'translate(' + e.clientX + 'px,' + e.clientY + 'px)'; cur.dataset.on = '1'; }, true);
-    document.addEventListener('mousedown', () => { cur.dataset.down = '1'; setTimeout(() => { delete cur.dataset.down; }, 260); }, true);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensure); else ensure();
-})();`;
