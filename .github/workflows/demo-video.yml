@@ -1,0 +1,60 @@
+name: Demo video
+
+# Records the Devpost demo in a real browser on GitHub's servers and publishes the MP4 + key
+# screenshots to the `demo-output` branch.
+#   With repo secrets PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, GEMINI_API_KEY, SANDBOX_BUYER_EMAIL
+#   → real PayPal Sandbox + real Gemini (the version to submit).
+#   Without them → mock rehearsal (captions and UI say so; don't submit it).
+on:
+  push:
+    branches-ignore: ["demo-output"]
+    paths:
+      - "tests/demo/**"
+      - "playwright.demo.config.ts"
+      - "scripts/encode-demo.mjs"
+      - ".github/workflows/demo-video.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: demo-video
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DEMO_MODE: ${{ (secrets.PAYPAL_CLIENT_ID != '' && secrets.PAYPAL_CLIENT_SECRET != '' && secrets.GEMINI_API_KEY != '' && secrets.SANDBOX_BUYER_EMAIL != '') && 'sandbox' || 'mock' }}
+      PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+      PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      SANDBOX_BUYER_EMAIL: ${{ secrets.SANDBOX_BUYER_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: ffmpeg
+        run: which ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
+      - name: Record (${{ env.DEMO_MODE }})
+        run: npx playwright test -c playwright.demo.config.ts
+      - name: Encode MP4
+        run: node scripts/encode-demo.mjs demo-output
+      - name: Publish to the demo-output branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p pub && cp -r demo-output/shots pub/ 2>/dev/null || true
+          cp demo-output/nexora-demo.mp4 pub/ 2>/dev/null || true
+          echo "mode=$DEMO_MODE commit=${GITHUB_SHA::7} run=${GITHUB_RUN_ID} at=$(date -u +%FT%TZ) status=${{ job.status }}" > pub/INFO.txt
+          cd pub && git init -q && git checkout -q -b demo-output && git add -A
+          git -c user.name="nexora-ci" -c user.email="nexora-ci@users.noreply.github.com" commit -qm "Demo video ($DEMO_MODE) from ${GITHUB_SHA::7}"
+          git push -f -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" demo-output

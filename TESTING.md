@@ -66,6 +66,20 @@ No real PayPal operation has been performed yet. Nothing in this file treats moc
 | Insight cache (single-flight, TTL, no error caching, eviction) and rate-limiter key sweep | 🧪 | `tests/unit/cache.test.ts` |
 | Load: production build under concurrent virtual users (mock PayPal, scripted AI with 2 s latency) | 🧪 | `loadtest/nexora-k6.js`, CI job `loadtest` (results in the run's `loadtest-results` artifact) |
 
+## Load test result (CI, 2026-11-11)
+
+GitHub-hosted runner (k6 and the server on the same machine), production build, mock PayPal, scripted AI with 2 s simulated latency, AI gate at 4 concurrent / 14 per minute. 300 virtual users at peak, 3 minutes.
+
+| Metric | Result |
+|---|---|
+| Requests | **50,090** (≈275/s) |
+| Unexpected errors (5xx other than "AI busy", or no response) | **0.00 %** |
+| Read latency p50 / p95 / p99 | 194 ms / **621 ms** / 773 ms |
+| All requests p95 | 770 ms |
+| AI requests | 984: **42 answered** (paced to the 14/min quota), **942 deferred** with a readable "try again in N s" (per-workspace limiter or AI gate) |
+| Checks passed | 50,089 / 50,089 |
+| Server after the test | `/api/health` → `ok: true`, gate `served 42, shed 18, queued 0` |
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push: lint → typecheck → unit/integration → production build → Playwright E2E, then the k6 load test. No secrets; nothing in CI talks to PayPal or an AI API.

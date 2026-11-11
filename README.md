@@ -113,7 +113,7 @@ With many people using the demo at once, the first thing that breaks is usually 
 | **Health + uptime** | `/api/health` checks the database and reports AI-gate counters (no secrets). The *Uptime check* GitHub Action pings it every 10 minutes, which keeps a free Render instance awake and emails the owner if the demo is down. | `src/app/api/health`, `.github/workflows/uptime.yml` |
 | **Restarts** | `DEMO_AUTOSEED=true` re-adds the labeled demo invoices after a host wipes the disk. | `src/instrumentation-node.ts` |
 
-**Load test.** `loadtest/nexora-k6.js` (k6) simulates signed-in users browsing invoices, analytics and the activity log while a share of them ask the AI agent, against a production build in mock mode with 2 s simulated model latency. CI runs it on every push (job `loadtest`); results are in the run's `loadtest-results` artifact. How to run it yourself: [loadtest/README.md](loadtest/README.md).
+**Load test.** `loadtest/nexora-k6.js` (k6) simulates signed-in users browsing invoices, analytics and the activity log while a share of them ask the AI agent, against a production build in mock mode with 2 s simulated model latency. CI runs it on every push (job `loadtest`). Latest result at 300 concurrent virtual users: **50,090 requests in 3 minutes, 0 % errors, p95 read latency 621 ms**. Every AI request was either answered (paced to the quota) or deferred with a readable "try again" message ([TESTING.md](TESTING.md#load-test-result-ci-2026-11-11)). How to run it yourself: [loadtest/README.md](loadtest/README.md).
 
 Scaling past one instance means moving the gate, rate limits and cache to Redis and SQLite to Postgres (see Roadmap); the interfaces are already separated for that.
 

@@ -4,7 +4,7 @@ name: CI
 # scripted AI, both labeled in the UI). No secrets needed; nothing here talks to PayPal or an AI API.
 on:
   push:
-    branches: ["**"]
+    branches-ignore: ["demo-output"]
   pull_request:
   workflow_dispatch:
 
