@@ -5,7 +5,8 @@ const sandbox = process.env.DEMO_MODE === "sandbox";
 
 /**
  * Demo-video recorder (tests/demo). Not part of the test suite.
- * 1600×900 CSS pixels at 1.2× device scale = 1920×1080 frames, so UI text is crisp on YouTube.
+ * 1600×810 CSS pixels at 1.2× device scale = 1920×972 frames (crisp UI text); the encoder adds a
+ * 108 px caption band underneath for a 1920×1080 video.
  */
 export default defineConfig({
   testDir: "tests/demo",
@@ -15,7 +16,7 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,
-    viewport: { width: 1600, height: 900 },
+    viewport: { width: 1600, height: 810 },
     deviceScaleFactor: 1.2,
     trace: "off",
     video: "off",
