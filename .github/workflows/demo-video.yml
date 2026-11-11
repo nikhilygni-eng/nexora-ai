@@ -27,12 +27,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      DEMO_MODE: ${{ (secrets.PAYPAL_CLIENT_ID != '' && secrets.PAYPAL_CLIENT_SECRET != '' && secrets.GEMINI_API_KEY != '' && secrets.SANDBOX_BUYER_EMAIL != '') && 'sandbox' || 'mock' }}
+      # The buyer email isn't secret, so a repository *variable* also works for it.
+      DEMO_MODE: ${{ (secrets.PAYPAL_CLIENT_ID != '' && secrets.PAYPAL_CLIENT_SECRET != '' && secrets.GEMINI_API_KEY != '' && (secrets.SANDBOX_BUYER_EMAIL != '' || vars.SANDBOX_BUYER_EMAIL != '')) && 'sandbox' || 'mock' }}
       PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
       PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      SANDBOX_BUYER_EMAIL: ${{ secrets.SANDBOX_BUYER_EMAIL }}
+      SANDBOX_BUYER_EMAIL: ${{ secrets.SANDBOX_BUYER_EMAIL || vars.SANDBOX_BUYER_EMAIL }}
     steps:
+      - name: Which settings can this run see? (yes/no only, never values)
+        run: |
+          echo "Repository SECRETS (Settings → Secrets and variables → Actions → Secrets tab):"
+          echo "  PAYPAL_CLIENT_ID     ${{ secrets.PAYPAL_CLIENT_ID != '' && 'yes' || 'MISSING' }}"
+          echo "  PAYPAL_CLIENT_SECRET ${{ secrets.PAYPAL_CLIENT_SECRET != '' && 'yes' || 'MISSING' }}"
+          echo "  GEMINI_API_KEY       ${{ secrets.GEMINI_API_KEY != '' && 'yes' || 'MISSING' }}"
+          echo "  SANDBOX_BUYER_EMAIL  ${{ secrets.SANDBOX_BUYER_EMAIL != '' && 'yes' || 'MISSING' }}"
+          echo "Repository VARIABLES with the same names (keys must NOT be variables; variables are visible):"
+          echo "  PAYPAL_CLIENT_ID     ${{ vars.PAYPAL_CLIENT_ID != '' && 'present' || 'no' }}"
+          echo "  PAYPAL_CLIENT_SECRET ${{ vars.PAYPAL_CLIENT_SECRET != '' && 'present' || 'no' }}"
+          echo "  GEMINI_API_KEY       ${{ vars.GEMINI_API_KEY != '' && 'present' || 'no' }}"
+          echo "  SANDBOX_BUYER_EMAIL  ${{ vars.SANDBOX_BUYER_EMAIL != '' && 'present' || 'no' }}"
+          echo "Mode: $DEMO_MODE"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
