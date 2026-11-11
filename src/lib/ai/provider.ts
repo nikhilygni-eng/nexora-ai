@@ -32,7 +32,7 @@ export type GenerateResult = {
   servedModel?: string;
 };
 
-export type AIErrorKind = "not_configured" | "timeout" | "refusal" | "rate_limited" | "auth" | "unavailable" | "malformed";
+export type AIErrorKind = "not_configured" | "timeout" | "refusal" | "rate_limited" | "auth" | "unavailable" | "malformed" | "busy";
 
 export class AIProviderError extends Error {
   constructor(
@@ -63,6 +63,10 @@ export class AIProviderError extends Error {
         return "The AI provider rejected the API key. Check it in .env.local.";
       case "malformed":
         return "The AI model returned an unreadable answer. Try again.";
+      case "busy":
+        return this.quota?.retryAfterSec
+          ? `NEXORA's AI is handling a lot of requests right now, so yours wasn't started. Try again in ${this.quota.retryAfterSec} seconds.`
+          : "NEXORA's AI is handling a lot of requests right now, so yours wasn't started. Try again in a few seconds.";
       default:
         return "The AI provider is unavailable right now. Try again shortly.";
     }

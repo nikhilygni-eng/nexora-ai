@@ -10,6 +10,9 @@ export class ScriptedProvider implements AIProvider {
   readonly model = "scripted-test-provider";
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    // Load tests only: simulate a real model's response time so the AI gate is exercised.
+    const latency = Number(process.env.AI_MOCK_LATENCY_MS ?? 0);
+    if (latency > 0) await new Promise((r) => setTimeout(r, Math.min(latency, 30_000)));
     if (req.jsonSchema?.name === "reminder") {
       const f = JSON.parse(lastUserText(req.messages) || "{}") as { amount_due?: string; invoice_number?: string; due_date?: string };
       return {

@@ -42,7 +42,8 @@ export function apiError(err: unknown) {
   if (err instanceof AIProviderError) {
     // Server-side diagnostics only (provider messages never contain our keys); the client gets a generic message.
     console.warn(`[ai] ${err.kind}: ${err.message.slice(0, 300)}`);
-    const status = err.kind === "not_configured" ? 503 : err.kind === "rate_limited" ? 429 : err.kind === "timeout" ? 504 : 502;
+    const status =
+      err.kind === "not_configured" || err.kind === "busy" ? 503 : err.kind === "rate_limited" ? 429 : err.kind === "timeout" ? 504 : 502;
     const headers = err.quota?.retryAfterSec ? { "Retry-After": String(err.quota.retryAfterSec) } : undefined;
     return NextResponse.json({ error: { code: `ai_${err.kind}`, message: err.userMessage } }, { status, headers });
   }

@@ -8,6 +8,10 @@ const optionalString = z
   .optional()
   .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined));
 
+/** Integer env var; a blank value (e.g. `AI_MAX_RPM=` in .env.local) means "use the default". */
+const intEnv = (min: number, max: number, def: number) =>
+  z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.coerce.number().int().min(min).max(max).default(def));
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PAYPAL_CLIENT_ID: optionalString,
@@ -27,6 +31,13 @@ const EnvSchema = z.object({
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
   /** Gemini 3.x reasoning depth. Lower = faster tool calls. */
   AI_THINKING_LEVEL: z.enum(["minimal", "low", "medium", "high"]).default("low"),
+  /** AI traffic gate (src/lib/ai/gate.ts): simultaneous model calls, queue size, max wait, and calls/minute (0 = off). */
+  AI_MAX_CONCURRENCY: intEnv(1, 64, 4),
+  AI_QUEUE_MAX: intEnv(0, 10000, 50),
+  AI_QUEUE_WAIT_MS: intEnv(0, 120000, 20000),
+  AI_MAX_RPM: intEnv(0, 100000, 0),
+  /** Seconds to reuse AI insights for identical analytics facts (0 = no cache). */
+  INSIGHTS_CACHE_SEC: intEnv(0, 86400, 600),
   APP_PASSCODE: optionalString,
   DATABASE_PATH: optionalString.transform((v) => v ?? "./data/nexora.db"),
   APP_BASE_URL: optionalString,

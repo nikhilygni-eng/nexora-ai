@@ -41,7 +41,8 @@ export default function AnalyticsPage() {
     setInsLoading(true);
     setInsErr(null);
     try {
-      const r = await api<{ insights: Insight[]; dropped: number; model: string }>("/api/insights", { body: { includeDemo } });
+      // "Regenerate" asks for a fresh answer; the first click may reuse a recent one for the same figures.
+      const r = await api<{ insights: Insight[]; dropped: number; model: string }>("/api/insights", { body: { includeDemo, regenerate: Boolean(insights) } });
       setInsights({ items: r.insights, dropped: r.dropped, model: r.model });
     } catch (e) {
       setInsErr((e as Error).message);

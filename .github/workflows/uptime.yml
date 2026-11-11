@@ -1,0 +1,33 @@
+name: Uptime check
+
+# Pings the hosted demo's /api/health every 10 minutes. Two jobs in one:
+#   1. keeps a free Render instance from sleeping, so judges never wait for a cold start
+#   2. fails (and GitHub emails the repo owner) if the demo is down
+# Turn it on: repo Settings → Secrets and variables → Actions → Variables → New variable
+#   NEXORA_URL = https://<your-service>.onrender.com   (no trailing slash)
+# With no NEXORA_URL set, the job is skipped.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    if: ${{ vars.NEXORA_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: GET /api/health
+        env:
+          NEXORA_URL: ${{ vars.NEXORA_URL }}
+        run: |
+          for attempt in 1 2 3 4; do
+            code=$(curl -sS -o health.json -w '%{http_code}' --max-time 90 "$NEXORA_URL/api/health" || echo 000)
+            echo "attempt $attempt: HTTP $code $(head -c 400 health.json 2>/dev/null)"
+            if [ "$code" = "200" ] && grep -q '"ok":true' health.json; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::NEXORA health check failed at $NEXORA_URL/api/health"
+          exit 1

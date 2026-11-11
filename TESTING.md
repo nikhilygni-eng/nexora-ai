@@ -62,6 +62,13 @@ No real PayPal operation has been performed yet. Nothing in this file treats moc
 | Approval gating, 3 concurrent clicks → 1 invoice, retry without duplicate, lost-response recovery, cancelled proposals, reminder gating, status sync | 🧪 | `tests/integration/approval-flow.test.ts` |
 | Transient AI retry policy (never retries auth / daily quota) | 🧪 | integration + unit |
 | Full UI flow (mock PayPal + scripted provider) | 🧪 | `tests/e2e/main-flow.spec.ts` |
+| AI traffic gate: concurrency cap, FIFO, queue-full and wait-budget shedding, RPM pacing, 429 cooldown, daily-quota fail-fast, abort while queued, 503 + Retry-After mapping | 🧪 | `tests/unit/ai-gate.test.ts` |
+| Insight cache (single-flight, TTL, no error caching, eviction) and rate-limiter key sweep | 🧪 | `tests/unit/cache.test.ts` |
+| Load: production build under concurrent virtual users (mock PayPal, scripted AI with 2 s latency) | 🧪 | `loadtest/nexora-k6.js`, CI job `loadtest` (results in the run's `loadtest-results` artifact) |
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push: lint → typecheck → unit/integration → production build → Playwright E2E, then the k6 load test. No secrets; nothing in CI talks to PayPal or an AI API.
 
 ## Latest results
 

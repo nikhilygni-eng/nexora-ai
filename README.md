@@ -99,6 +99,24 @@ Endpoints verified against PayPal's official OpenAPI spec ([paypal-rest-api-spec
 - **No fake AI:** with no key configured, the UI shows *AI not configured*. The scripted provider exists only for automated tests and is labeled as such.
 - Rate limits: 20 agent requests/min, 6 insight requests/min, 8 login attempts/min.
 
+## Reliability under load
+
+With many people using the demo at once, the first thing that breaks is usually the AI provider's free-tier quota, not the server. NEXORA is built so that overload produces a clear "try again in N seconds" message, never a crash or a blank screen.
+
+| Layer | What it does | Where |
+|---|---|---|
+| **AI traffic gate** | One process-wide gate for every model call (agent, insights, reminders): at most `AI_MAX_CONCURRENCY` calls at once, a FIFO queue, pacing to `AI_MAX_RPM` calls/minute (set just under the provider quota), a pause after a provider 429, and fail-fast for 10 minutes after a daily quota runs out. When the queue is full or the wait would exceed `AI_QUEUE_WAIT_MS`, the request is shed with HTTP 503 + `Retry-After` and a readable message. | `src/lib/ai/gate.ts` |
+| **Insight cache** | Identical figures + model → the same insights are reused for `INSIGHTS_CACHE_SEC` (single-flight, so 10 simultaneous clicks cost one model call). *Regenerate* always asks again. | `src/lib/cache.ts`, `/api/insights` |
+| **PayPal** | OAuth token cached until 60 s before expiry with single-flight refresh; 20 s timeout on every call; idempotent approvals (see above). | `src/lib/paypal/client.ts` |
+| **Browser** | Every request has a timeout; reads retry twice with backoff on network errors and 502/503/504; host-level errors (cold start, proxy) get a friendly message. | `src/lib/client.ts` |
+| **Fallback UI** | Error boundaries for every screen (`error.tsx`, `global-error.tsx`, `not-found.tsx`). They show an error reference, never stack traces. | `src/app/` |
+| **Health + uptime** | `/api/health` checks the database and reports AI-gate counters (no secrets). The *Uptime check* GitHub Action pings it every 10 minutes, which keeps a free Render instance awake and emails the owner if the demo is down. | `src/app/api/health`, `.github/workflows/uptime.yml` |
+| **Restarts** | `DEMO_AUTOSEED=true` re-adds the labeled demo invoices after a host wipes the disk. | `src/instrumentation-node.ts` |
+
+**Load test.** `loadtest/nexora-k6.js` (k6) simulates signed-in users browsing invoices, analytics and the activity log while a share of them ask the AI agent, against a production build in mock mode with 2 s simulated model latency. CI runs it on every push (job `loadtest`); results are in the run's `loadtest-results` artifact. How to run it yourself: [loadtest/README.md](loadtest/README.md).
+
+Scaling past one instance means moving the gate, rate limits and cache to Redis and SQLite to Postgres (see Roadmap); the interfaces are already separated for that.
+
 ## Run it locally
 
 Requirements: Node 20+ (22 recommended), a free [PayPal Developer](https://developer.paypal.com/) account, and an AI key (FreeLLMAPI or Gemini).
@@ -124,6 +142,9 @@ Open http://localhost:3000 and sign in with your `APP_PASSCODE`. `/setup` lists 
 | `APP_PASSCODE` | ≥ 6 characters |
 | `DATABASE_PATH` | default `./data/nexora.db` |
 | `PAYPAL_WEBHOOK_ID` | optional; enables `/api/webhooks/paypal` |
+| `AI_MAX_RPM`, `AI_MAX_CONCURRENCY`, `AI_QUEUE_MAX`, `AI_QUEUE_WAIT_MS` | AI traffic gate (see *Reliability under load*). For free-tier `gemini-3.5-flash-lite` use `AI_MAX_RPM=14` |
+| `INSIGHTS_CACHE_SEC` | default 600; `0` disables the insight cache |
+| `DEMO_AUTOSEED` | `true` re-adds labeled demo invoices at startup if missing |
 
 ### Choosing a Gemini model (free tier)
 
@@ -169,8 +190,8 @@ See [TESTING.md](TESTING.md) for what is verified against the real Sandbox and w
 
 ## Limitations
 
-- Single-user passcode auth (queries are still scoped by org ID, ready for multi-tenant).
-- SQLite on a single instance; in-memory rate limiting. The repository layer is ready for Postgres.
+- Single-user passcode auth (queries are still scoped by org ID, ready for multi-tenant). Everyone who signs in shares one workspace.
+- SQLite on a single instance; in-memory rate limiting, AI gate and insight cache. The repository layer is ready for Postgres.
 - Analytics sum only the most common currency; other currencies are counted and flagged, not converted.
 - FreeLLMAPI runs on localhost, so a hosted deployment uses Gemini.
 - PayPal Sandbox only, by design.

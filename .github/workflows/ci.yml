@@ -1,0 +1,85 @@
+name: CI
+
+# Lint, unit + integration tests, production build and the Playwright E2E flow (mock PayPal +
+# scripted AI, both labeled in the UI). No secrets needed; nothing here talks to PayPal or an AI API.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit + integration tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium for E2E
+        run: npx playwright install --with-deps chromium
+      - name: E2E (mock PayPal + scripted AI)
+        run: npm run test:e2e
+
+  loadtest:
+    # Real numbers for the README: the production build under concurrent virtual users.
+    # Mock PayPal + scripted AI with 2 s simulated model latency; the AI gate is configured like
+    # the hosted demo (4 concurrent calls, 14/min). Never touches PayPal or an AI API.
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VUS: ${{ vars.LOADTEST_VUS || '300' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Start NEXORA (load-test mode)
+        env:
+          PAYPAL_MODE: mock
+          AI_PROVIDER: mock
+          NEXORA_ALLOW_MOCKS: "true"
+          APP_PASSCODE: loadtest-pass
+          DATABASE_PATH: ./data/loadtest.db
+          DEMO_AUTOSEED: "true"
+          AI_MOCK_LATENCY_MS: "2000"
+          AI_MAX_CONCURRENCY: "4"
+          AI_MAX_RPM: "14"
+        run: |
+          nohup npx next start -p 3300 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://localhost:3300/api/health && echo && break; sleep 1; done
+      - uses: grafana/setup-k6-action@v1
+      - name: k6 run (${{ env.VUS }} virtual users)
+        run: k6 run -e NEXORA_URL=http://localhost:3300 -e NEXORA_PASSCODE=loadtest-pass -e VUS=$VUS -e HOLD=1m --summary-export=loadtest-summary.json loadtest/nexora-k6.js
+      - name: Server health after the test
+        if: always()
+        run: curl -sS http://localhost:3300/api/health; echo; tail -n 40 server.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loadtest-results
+          path: |
+            loadtest-summary.json
+            server.log

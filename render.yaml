@@ -1,6 +1,10 @@
 # Render Blueprint (not deployed yet — deployment needs the owner's approval).
-# Free plan: the SQLite file lives on ephemeral disk and resets on redeploy/restart.
-# For persistence, attach a Render Disk at /var/data and set DATABASE_PATH=/var/data/nexora.db (paid).
+# Free plan: the instance sleeps after 15 min without traffic (first request then takes ~1 min) and
+# the SQLite file lives on ephemeral disk, so it resets on redeploy/restart.
+#   - Keep it awake through judging (Dec 1–15): set the repo variable NEXORA_URL and the
+#     "Uptime check" GitHub Action pings /api/health every 10 minutes (and emails you if it fails).
+#   - DEMO_AUTOSEED=true re-adds the labeled demo invoices after any restart.
+#   - For persistence, attach a Render Disk at /var/data and set DATABASE_PATH=/var/data/nexora.db (paid).
 services:
   - type: web
     name: nexora-ai
@@ -25,12 +29,22 @@ services:
         value: gemini
       - key: GEMINI_API_KEY
         sync: false
+      # flash-lite: 15 requests/minute on the free tier (gemini-3.5-flash allows only 20/day — too few for judges).
       - key: AI_MODEL
-        value: gemini-3.5-flash
+        value: gemini-3.5-flash-lite
       - key: AI_THINKING_LEVEL
         value: low
       - key: AI_TIMEOUT_MS
         value: "60000"
+      # AI traffic gate: pace model calls just under the free-tier limit so bursts queue instead of failing.
+      - key: AI_MAX_RPM
+        value: "14"
+      - key: AI_MAX_CONCURRENCY
+        value: "4"
+      - key: AI_QUEUE_WAIT_MS
+        value: "25000"
+      - key: DEMO_AUTOSEED
+        value: "true"
       - key: APP_PASSCODE
         sync: false
       - key: DATABASE_PATH
