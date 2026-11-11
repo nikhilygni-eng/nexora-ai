@@ -52,6 +52,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Fail in the first minute, with a clear reason, if the keys don't work. Both checks are
+      # read-only (they create nothing, send nothing and print no credentials).
+      - name: PayPal Sandbox key check (read-only)
+        if: ${{ env.DEMO_MODE == 'sandbox' }}
+        run: node scripts/check-paypal.mjs
+      - name: Gemini key check (read-only)
+        if: ${{ env.DEMO_MODE == 'sandbox' }}
+        run: node scripts/check-gemini.mjs
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
@@ -62,12 +70,21 @@ jobs:
         run: npx playwright test -c playwright.demo.config.ts
       - name: Encode MP4
         if: ${{ always() && !inputs.dry_run }}
-        run: test -f demo-output/frames.json && node scripts/encode-demo.mjs demo-output
+        run: |
+          if [ -f demo-output/frames.json ]; then
+            node scripts/encode-demo.mjs demo-output
+          else
+            echo "Nothing was recorded, so there is nothing to encode."
+          fi
       - name: Publish to the demo-output branch
         if: ${{ always() && !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if ! ls demo-output/*.mp4 >/dev/null 2>&1; then
+            echo "No video was produced; leaving the demo-output branch as it is."
+            exit 0
+          fi
           mkdir -p pub && cp -r demo-output/shots pub/ 2>/dev/null || true
           cp demo-output/nexora-demo.mp4 demo-output/nexora-demo-full.mp4 pub/ 2>/dev/null || true
           echo "mode=$DEMO_MODE commit=${GITHUB_SHA::7} run=${GITHUB_RUN_ID} at=$(date -u +%FT%TZ) status=${{ job.status }}" > pub/INFO.txt
