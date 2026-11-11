@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/client";
 import { Logo } from "@/components/logo";
 import { Button, ErrorNote, Field, Input, SandboxBadge } from "@/components/ui";
 
 function LoginForm() {
-  const router = useRouter();
   const next = useSearchParams().get("next");
   const [passcode, setPasscode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,8 +19,11 @@ function LoginForm() {
     setError(null);
     try {
       await api("/api/auth/login", { body: { passcode } });
-      router.push(next && next.startsWith("/app") ? next : "/app");
-      router.refresh();
+      // Full page load on purpose, not router.push. The browser's in-memory route cache can still
+      // hold the signed-out answer for /app (a redirect back to this page, prefetched by the landing
+      // page's links). router.push would be served from that cache and leave a signed-in user here.
+      // The button keeps its spinner until the new page loads.
+      window.location.assign(next && next.startsWith("/app") ? next : "/app");
     } catch (e2) {
       setError((e2 as Error).message);
       setBusy(false);

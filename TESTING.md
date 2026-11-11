@@ -62,6 +62,7 @@ No real PayPal operation has been performed yet. Nothing in this file treats moc
 | Approval gating, 3 concurrent clicks → 1 invoice, retry without duplicate, lost-response recovery, cancelled proposals, reminder gating, status sync | 🧪 | `tests/integration/approval-flow.test.ts` |
 | Transient AI retry policy (never retries auth / daily quota) | 🧪 | integration + unit |
 | Full UI flow (mock PayPal + scripted provider) | 🧪 | `tests/e2e/main-flow.spec.ts` |
+| Sign-in from the landing page (both buttons) reaches the Command Center and stays signed in after a refresh; sign-in returns to the page that asked for it; `next` can't leave the site | 🧪 | `tests/e2e/sign-in-flow.spec.ts` |
 | AI traffic gate: concurrency cap, FIFO, queue-full and wait-budget shedding, RPM pacing, 429 cooldown, daily-quota fail-fast, abort while queued, 503 + Retry-After mapping | 🧪 | `tests/unit/ai-gate.test.ts` |
 | Insight cache (single-flight, TTL, no error caching, eviction) and rate-limiter key sweep | 🧪 | `tests/unit/cache.test.ts` |
 | Load: production build under concurrent virtual users (mock PayPal, scripted AI with 2 s latency) | 🧪 | `loadtest/nexora-k6.js`, CI job `loadtest` (results in the run's `loadtest-results` artifact) |
@@ -99,3 +100,4 @@ GitHub-hosted runner (k6 and the server on the same machine), production build, 
 4. Invalid key (HTTP 400 `API_KEY_INVALID`) mapped to a generic error. Now mapped to "rejected the API key".
 5. A 1-in-16 flaky unit test (token tamper used a no-op change).
 6. Security: a vim swap file `..env.local.swp` was not covered by `.gitignore`. Now ignored.
+7. Sign-in from the landing page got stuck (found by the demo rehearsal, 2026-11-11). The landing page's links made the browser prefetch `/app` while signed out; the server answered with a redirect to `/login`, and the browser's in-memory route cache kept that answer. After a successful sign-in, `router.push("/app")` was served from the cache and landed back on the sign-in page. Opening `/login` directly, or reloading it first, worked. Fix: sign-in now does a full page load (`window.location.assign`). Regression test: `tests/e2e/sign-in-flow.spec.ts`.
