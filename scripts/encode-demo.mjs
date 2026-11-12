@@ -6,7 +6,7 @@
  *   - captions drawn from the recorder's timed caption list, centered, up to two lines
  *   - playback is always 1×. Nothing is ever sped up.
  *
- * If the recording is longer than MAX_SEC (default 176 s; Devpost's limit is under 3:00), the
+ * If the recording is longer than MAX_SEC (default 168 s = 2:48; Devpost's limit is under 3:00), the
  * final edit is shortened by cutting, in this order:
  *   1. waiting time (spinners while the AI or PayPal responds), keeping the start and end of each wait
  *   2. scenes the recorder marked optional
@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const dir = path.resolve(process.argv[2] ?? "demo-output");
-const maxSec = Number(process.env.MAX_SEC ?? 176);
+const maxSec = Number(process.env.MAX_SEC ?? 168);
 const W = 1920;
 const PAGE_H = 972;
 const BAND_H = 108;
