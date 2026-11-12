@@ -22,7 +22,7 @@ You type: *"Bill Acme Corp $800 for the landing page redesign, due in 14 days."*
 - **Money done right:** integer minor units in the database, exact decimal strings for PayPal, zero-decimal currencies (JPY, HUF, TWD) handled, configurable tax.
 - **Audit log** of every AI proposal, approval and PayPal call with HTTP status and PayPal debug ID, with secrets redacted.
 - **Built for traffic spikes:** a process-wide AI traffic gate (concurrency cap, queue, pacing to the model quota, cooldown after 429s) so overload returns "try again in N seconds" instead of errors; cached insights; timeouts and retries; error boundaries; a health check and uptime monitor. Load-tested with k6 at 300 concurrent virtual users (mock PayPal and simulated AI, so it measures NEXORA's own server, not Gemini or PayPal capacity): 50,090 requests in 3 minutes, 0% errors, p95 read latency 621 ms, and every AI request beyond the quota got a polite "try again".
-- Next.js 15, TypeScript strict, SQLite, AG Grid Community, Recharts, Tailwind. 60 unit/integration tests, Playwright E2E, an opt-in test against the real Sandbox, and CI on every push.
+- Next.js 15, TypeScript strict, SQLite, AG Grid Community, Recharts, Tailwind. 97 unit/integration tests, 7 Playwright E2E tests, an opt-in test against the real Sandbox, and CI on every push.
 
 ## Challenges
 
@@ -33,7 +33,7 @@ You type: *"Bill Acme Corp $800 for the landing page redesign, due in 14 days."*
 
 ## Accomplishments
 
-- A full loop from one sentence to a real PayPal Sandbox invoice to payment tracking, with no PayPal write that a person didn't approve.
+- A full loop from one sentence to an approved invoice to payment tracking, with no PayPal write that a person didn't approve. The PayPal client has created, sent and cancelled a real Sandbox invoice; the click-to-approve path in the UI is verified with a mock PayPal.
 - Concurrency-safe approvals: three simultaneous approve clicks produce exactly one PayPal invoice (tested).
 
 ## What we learned
@@ -43,6 +43,15 @@ The interesting part of "AI + payments" isn't generating text. It's designing th
 ## What's next
 
 Recurring invoices, a client book, multi-agent collections with daily batched approvals, team roles with approval limits, and a PayPal dispute assistant. See ROADMAP.md.
+
+## What has actually been tested
+
+- **Real Google Gemini** (`gemini-3.5-flash-lite`): 12/12 agent checks through the running app on Nov 9 (clarifying questions, drafts, EUR + VAT maths, prompt-injection refusal, cited insights); key and model re-checked Nov 12.
+- **Real PayPal Sandbox:** OAuth and invoice listing verified Nov 12. One real Sandbox invoice (`INV2-7DA3-4B8P-YUAA-LPDN`, $944.00) was created, sent and cancelled by the app's PayPal client on Nov 9.
+- **Mock-tested only:** the Approve button end to end, reminders and cancel from the UI, webhooks, and Paid status. No Sandbox invoice has been paid.
+- **Automated:** lint, typecheck, 97 unit/integration tests, production build, 7 browser tests and a 300-user load test pass in CI. CI uses a mock PayPal and a scripted AI.
+- **The demo video is recorded in simulated mode** (mock PayPal, scripted test AI, both labeled on screen). The proposal in it is cancelled, so nothing is sent to PayPal.
+- **No hosted demo has been verified.** Run it locally with the README steps.
 
 ## Data honesty
 

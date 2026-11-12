@@ -1,6 +1,6 @@
 # Testing status
 
-Honest status of every feature. Updated 2026-11-09 (evening IST).
+Honest status of every feature. Updated 2026-11-12.
 
 **Legend:** ✅ verified live (real provider) · 🧪 tested with mocks · ⬜ untested · ⛔ blocked
 
@@ -42,11 +42,22 @@ Also verified on `gemini-3.5-flash` (default thinking): same behaviors, 11/12 (i
 |---|---|---|
 | Endpoints and request fields vs official spec (`paypal-rest-api-specifications/openapi/invoicing_v2.json`) | ✅ checked | create / send / get / remind / cancel / search; `name.full_name`, `billing_info.business_name`, quantity string, `unit_of_measure`, tax percent, dates |
 | `PayPal-Request-Id` on invoicing | ⚠️ | **Not documented** in the Invoicing v2 spec → not relied on. Deterministic invoice numbers + search recovery added instead (tested with a mock that loses the response) |
-| Read-only credential check | ⛔ | `npm run check:paypal` ready; blocked: `PAYPAL_CLIENT_ID/SECRET` empty in `.env.local` |
-| Real create → send → get → remind → cancel | ⛔ | `npm run test:sandbox` ready; same blocker |
+| Read-only credential check | ✅ | 2026-11-12, owner's laptop: `npm run check:paypal` → Sandbox OAuth HTTP 200, invoicing scope present, list invoices HTTP 200. `npm run check:gemini` → key accepted, `gemini-3.5-flash-lite` available. Read-only; no invoice created |
+| Real create → send → cancel through the app's `PayPalClient` | ✅ once | `npm run test:sandbox` on 2026-11-09 produced Sandbox invoice `INV2-7DA3-4B8P-YUAA-LPDN` ($800 + 18 % = $944.00): created 15:50:59Z, sent 15:51:01Z, cancelled 15:51:04Z (timestamps read back from PayPal on 2026-11-12). Test money only |
+| Approve button in the UI → real Sandbox invoice | ⬜ | Not yet run against the real Sandbox. Covered with the mock PayPal only |
+| Paid status arriving from a real Sandbox payment | ⬜ | Not tested. No Sandbox invoice has been paid |
+| Reminder and cancel from the UI on a real Sandbox invoice | ⬜ | Not tested from the UI |
 | Webhooks | 🧪 | Signature gate, forged replay, malformed payloads, and transient sync retry covered by 7 local integration tests; real PayPal delivery still needs a public URL + `PAYPAL_WEBHOOK_ID` |
 
-No real PayPal operation has been performed yet. Nothing in this file treats mock results as Sandbox evidence.
+One real Sandbox invoice has been created, sent and cancelled (row above). Everything else PayPal-related is mock-tested. Nothing in this file treats mock results as Sandbox evidence.
+
+## Demo video
+
+The submitted demo video was recorded in **simulated mode**: mock PayPal and a scripted test AI provider, both labeled on screen ("Mock PayPal · no real calls", "Scripted test provider"). In it the invoice proposal is cancelled, not approved, and nothing is sent to PayPal. It shows the product flow and UI; it is not evidence of live PayPal or Gemini calls.
+
+## Hosted demo
+
+No hosted URL has been verified. `render.yaml` is provided, but a deployment, its sign-in and its uptime are untested.
 
 ## Automated suites (mocks)
 
@@ -91,6 +102,7 @@ GitHub-hosted runner (k6 and the server on the same machine), production build, 
 | Where | lint | unit/integration | build | E2E | live agent | live UI |
 |---|---|---|---|---|---|---|
 | Cloud dev container | clean | 42/42 | OK | 3/3 | n/a (no key) | n/a |
+| GitHub CI, `main` (Nov 11–12) | clean | **97/97** | OK | **7/7** | n/a (no keys in CI) | n/a |
 | Owner laptop (escanor), current local worktree (Nov 9) | clean | **49/49** | OK | **3/3** | **12/12** (previous live run) | **pass** (previous live run) |
 
 ## Bugs found by live testing (and fixed)
