@@ -1,5 +1,6 @@
 import "server-only";
 import { logAudit } from "@/lib/audit";
+import { singleFlight, withPayPalSlot } from "@/lib/concurrency";
 import {
   getOrg,
   getInvoiceByProposal,
@@ -326,8 +327,16 @@ export async function syncInvoice(orgId: string, invoiceId: string) {
   }
 }
 
-/** Sync all open PayPal invoices, throttled per invoice. */
-export async function syncOpenInvoices(orgId: string, minIntervalMs = 15000) {
+/**
+ * Sync all open PayPal invoices, throttled per invoice. The UI polls this from every open tab, so
+ * concurrent calls share one in-flight sync (1,000 tabs → 1 round of PayPal GETs, not 1,000), and
+ * the round itself runs inside the PayPal bulkhead.
+ */
+export function syncOpenInvoices(orgId: string, minIntervalMs = 15000) {
+  return singleFlight(`sync-open:${orgId}`, () => withPayPalSlot(() => syncOpenInvoicesNow(orgId, minIntervalMs)));
+}
+
+async function syncOpenInvoicesNow(orgId: string, minIntervalMs: number) {
   const open = listInvoices(orgId).filter(
     (r) => r.source !== "demo" && r.paypal_invoice_id && !FINAL.has(r.status) &&
       (!r.last_synced_at || Date.now() - Date.parse(r.last_synced_at) > minIntervalMs),

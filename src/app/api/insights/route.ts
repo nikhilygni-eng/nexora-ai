@@ -3,6 +3,7 @@ import { z } from "zod";
 import { computeFacts } from "@/lib/analytics";
 import { generateInsights } from "@/lib/ai/insights";
 import { apiError, json, requireSession } from "@/lib/api";
+import { withAISlot } from "@/lib/concurrency";
 import { logAudit } from "@/lib/audit";
 import { rateLimit } from "@/lib/ratelimit";
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
     const { includeDemo } = z.object({ includeDemo: z.boolean().default(true) }).parse(await req.json().catch(() => ({})));
     const facts = computeFacts(orgId, { includeDemo });
     if (facts.scope.invoice_count === 0) return json({ insights: [], dropped: 0, facts, empty: true });
-    const r = await generateInsights(facts);
+    const r = await withAISlot(() => generateInsights(facts));
     logAudit({ orgId, actor: "ai", action: "insights.generated", details: { count: r.insights.length, dropped: r.dropped, model: r.model, include_demo: includeDemo } });
     return json({ ...r, facts });
   } catch (e) {

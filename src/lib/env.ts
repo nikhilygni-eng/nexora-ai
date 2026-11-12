@@ -30,6 +30,11 @@ const EnvSchema = z.object({
   APP_PASSCODE: optionalString,
   DATABASE_PATH: optionalString.transform((v) => v ?? "./data/nexora.db"),
   APP_BASE_URL: optionalString,
+  /** Shed API load (503 + Retry-After) when event-loop lag stays above this many ms. 0 = off. Default 1000 in production. */
+  LOAD_SHED_LAG_MS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(0).max(60000).optional(),
+  ),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

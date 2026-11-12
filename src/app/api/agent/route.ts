@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { runAgent } from "@/lib/ai/agent";
 import { apiError, json, requireSession } from "@/lib/api";
+import { withAISlot } from "@/lib/concurrency";
 import { getProposal, latestConversation, listMessages, listProposals } from "@/lib/db/repo";
 import { rateLimit } from "@/lib/ratelimit";
 import { proposalDTO } from "@/lib/views";
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
       return json({ error: { code: "rate_limited", message: `Slow down a little — try again in ${rl.retryAfterSec}s.` } }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });
     }
     const body = Body.parse(await req.json());
-    const result = await runAgent({ orgId, conversationId: body.conversationId, message: body.message });
+    const result = await withAISlot(() => runAgent({ orgId, conversationId: body.conversationId, message: body.message }));
     return json({
       ...result,
       proposals: result.proposalIds.map((id) => getProposal(orgId, id)).filter(Boolean).map((p) => proposalDTO(p!)),

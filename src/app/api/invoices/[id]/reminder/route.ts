@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { draftReminderProposal } from "@/lib/ai/reminder";
 import { apiError, json, requireSession } from "@/lib/api";
+import { withAISlot } from "@/lib/concurrency";
 import { getInvoiceRow } from "@/lib/db/repo";
 import { isRemindable } from "@/lib/invoices/service";
 import { assertSameOrigin } from "@/lib/origin";
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { status: 422 },
       );
     }
-    const p = await draftReminderProposal(orgId, row, tone);
+    const p = await withAISlot(() => draftReminderProposal(orgId, row, tone));
     return json({ proposal: proposalDTO(p) });
   } catch (e) {
     return apiError(e);

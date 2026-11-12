@@ -15,7 +15,8 @@
     "test:all": "npm run lint && npm test && npm run build && npm run test:e2e",
     "check:live-agent": "node scripts/live-agent-check.mjs",
     "check:paypal": "node scripts/check-paypal.mjs",
-    "check:ui-live": "node scripts/ui-live-smoke.mjs"
+    "check:ui-live": "node scripts/ui-live-smoke.mjs",
+    "load:test": "node scripts/load-test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

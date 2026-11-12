@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { apiError, json, requireSession } from "@/lib/api";
+import { withPayPalSlot } from "@/lib/concurrency";
 import { approveProposal } from "@/lib/invoices/service";
 import { assertSameOrigin } from "@/lib/origin";
 import { proposalDTO } from "@/lib/views";
@@ -15,7 +16,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     assertSameOrigin(req);
     const { orgId } = await requireSession();
-    const { proposal } = await approveProposal(orgId, (await params).id);
+    const id = (await params).id;
+    const { proposal } = await withPayPalSlot(() => approveProposal(orgId, id));
     return json({ proposal: proposalDTO(proposal) });
   } catch (e) {
     return apiError(e);

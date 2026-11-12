@@ -6,9 +6,11 @@ import { rateLimit } from "@/lib/ratelimit";
 import { apiError } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { DEFAULT_ORG_ID } from "@/lib/db";
+import { assertCapacity } from "@/lib/load";
 
 export async function POST(req: NextRequest) {
   try {
+    assertCapacity();
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
     const rl = rateLimit(`login:${ip}`, 8, 60_000);
     if (!rl.ok) {

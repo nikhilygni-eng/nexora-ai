@@ -8,6 +8,8 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { AIProviderError } from "@/lib/ai/provider";
 import { PayPalApiError, PayPalConfigError, PayPalNetworkError } from "@/lib/paypal/errors";
 import { ApprovalConflictError, ApprovalValidationError, ExecutionError, NotFoundError } from "@/lib/invoices/service";
+import { BusyError } from "@/lib/concurrency";
+import { assertCapacity } from "@/lib/load";
 
 export type Session = { orgId: string };
 
@@ -15,8 +17,13 @@ export class UnauthorizedError extends Error {
   status = 401;
 }
 
-/** Every API route resolves the org from the session; all queries are org-scoped. */
+/**
+ * Every API route resolves the org from the session; all queries are org-scoped.
+ * It is also the load-shedding gate: when the process is overloaded, authenticated API work is
+ * refused up front (BusyError → 503 + Retry-After) before any database or provider call.
+ */
 export async function requireSession(): Promise<Session> {
+  assertCapacity();
   const env = getEnv();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!(await verifySessionToken(token, env.APP_PASSCODE))) throw new UnauthorizedError("Sign in to continue.");
@@ -31,6 +38,12 @@ export function apiError(err: unknown) {
   const body = (status: number, code: string, message: string, extra: Record<string, unknown> = {}) =>
     NextResponse.json({ error: { code, message, ...extra } }, { status });
   if (err instanceof UnauthorizedError) return body(401, "unauthorized", err.message);
+  if (err instanceof BusyError) {
+    return NextResponse.json(
+      { error: { code: "busy", message: err.userMessage } },
+      { status: 503, headers: { "Retry-After": String(err.retryAfterSec) } },
+    );
+  }
   if (err instanceof ZodError) return body(400, "invalid_request", err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
   if (err instanceof ApprovalConflictError) return body(409, "conflict", err.message);
   if (err instanceof ApprovalValidationError) return body(422, "invalid", err.message);

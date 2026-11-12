@@ -6,20 +6,35 @@ export class ApiError extends Error {
   }
 }
 
-/** Browser fetch wrapper: JSON in/out, readable errors, redirect to login on 401. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Browser fetch wrapper: JSON in/out, readable errors, redirect to login on 401.
+ * Reads (GET) that hit a brief overload (503 busy / 429) are retried once after the server's
+ * Retry-After (capped at 5s, with jitter so tabs don't all retry at the same instant).
+ * Writes are never retried automatically.
+ */
 export async function api<T>(path: string, init?: { method?: string; body?: unknown; signal?: AbortSignal }): Promise<T> {
+  const method = init?.method ?? (init?.body !== undefined ? "POST" : "GET");
   let res: Response;
-  try {
-    res = await fetch(path, {
-      method: init?.method ?? (init?.body !== undefined ? "POST" : "GET"),
-      headers: init?.body !== undefined ? { "Content-Type": "application/json" } : undefined,
-      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: init?.signal,
-      cache: "no-store",
-    });
-  } catch (e) {
-    if ((e as Error).name === "AbortError") throw e;
-    throw new ApiError(0, "network", "Can't reach the NEXORA server. Check that it's running.");
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(path, {
+        method,
+        headers: init?.body !== undefined ? { "Content-Type": "application/json" } : undefined,
+        body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+        signal: init?.signal,
+        cache: "no-store",
+      });
+    } catch (e) {
+      if ((e as Error).name === "AbortError") throw e;
+      throw new ApiError(0, "network", "Can't reach the NEXORA server. Check that it's running.");
+    }
+    if (method !== "GET" || attempt > 0 || (res.status !== 503 && res.status !== 429)) break;
+    const retryAfter = Number(res.headers.get("Retry-After"));
+    if (!(retryAfter > 0 && retryAfter <= 5)) break;
+    await sleep(retryAfter * 1000 + Math.random() * 750);
+    if (init?.signal?.aborted) break;
   }
   const data = (await res.json().catch(() => ({}))) as { error?: { code: string; message: string; debugId?: string } };
   if (!res.ok) {

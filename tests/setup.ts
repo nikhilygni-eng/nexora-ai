@@ -5,6 +5,8 @@ import { resetMockPayPal } from "@/lib/paypal/mock";
 import { setPayPalFetcherForTests } from "@/lib/paypal";
 import { setAIProviderForTests } from "@/lib/ai";
 import { resetRateLimits } from "@/lib/ratelimit";
+import { resetConcurrencyForTests } from "@/lib/concurrency";
+import { clearReadCache } from "@/lib/cache";
 
 beforeEach(() => {
   Object.assign(process.env, {
@@ -22,4 +24,6 @@ beforeEach(() => {
   setPayPalFetcherForTests(undefined);
   setAIProviderForTests(undefined);
   resetRateLimits();
+  resetConcurrencyForTests();
+  clearReadCache();
 });
