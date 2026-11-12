@@ -1,0 +1,47 @@
+name: NEXORA cloud demo recording (mock-only)
+
+on:
+  push:
+    branches:
+      - cloud-demo-record-20261112
+
+permissions:
+  contents: read
+
+jobs:
+  record-mock-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DEMO_MODE: mock
+      DEMO_CAPTURE: "on"
+      DEMO_APPROVE: "off"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Check ffmpeg
+        run: which ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
+      - name: Record clearly labeled mock demonstration
+        run: npx playwright test -c playwright.demo.config.ts
+      - name: Encode under 2 minutes 48 seconds
+        if: always()
+        run: |
+          if [ -f demo-output/frames.json ]; then
+            node scripts/encode-demo.mjs demo-output
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nexora-cloud-mock-demo-20261112
+          path: |
+            demo-output/*.mp4
+            demo-output/shots/**
+            demo-output/frames.json
+          if-no-files-found: warn
+          retention-days: 7
