@@ -1,0 +1,20 @@
+name: Fetch recording artifact (one-off)
+# Temporary, on this branch only: copies one workflow artifact into a branch so it can be reviewed.
+on:
+  push:
+    branches: ["fetch-artifact"]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir pub && gh run download 43205653840 --repo "$GITHUB_REPOSITORY" -n nexora-cloud-mock-demo-20261112 -D pub
+          ls -la pub; cd pub && git init -q && git checkout -q -b cloud-mock-artifact && git add -A
+          git -c user.name="nexora-ci" -c user.email="nexora-ci@users.noreply.github.com" commit -qm "Copy of artifact nexora-cloud-mock-demo-20261112 from run 43205653840"
+          git push -f -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" cloud-mock-artifact
